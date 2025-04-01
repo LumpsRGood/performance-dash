@@ -22,7 +22,7 @@ def parse_store_name(name):
     for sid, sname in STORE_NAMES.items():
         if sname.upper() in text or sid in text:
             return sid
-    for label, sid in STORE_NAMES.items():  # Reverse match for names like "Eastern Blvd"
+    for label, sid in STORE_NAMES.items():
         if label.upper() in text:
             return sid
     fallback = {"STORE 1": "3231", "STORE 2": "4445", "STORE 3": "4456", "STORE 4": "4463"}
@@ -38,7 +38,7 @@ def load_sales(file):
     raw = pd.read_excel(file, header=None)
     df = raw.iloc[5:, [0, 1, 4, 6, 11]]
     df.columns = ['Store Location', 'Employee', 'PPA', 'Discount %', 'Beverage %']
-    df['Store'] = df['Store Location'].map(parse_store_name)
+    df['Store'] = df['Store Location'].map(parse_store_name).astype(str)
     df['Employee'] = df['Employee'].apply(clean_name)
     df = df.dropna(subset=['Store', 'Employee'])
     df[['PPA', 'Discount %', 'Beverage %']] = df[['PPA', 'Discount %', 'Beverage %']].apply(pd.to_numeric, errors='coerce')
@@ -50,120 +50,103 @@ def load_turn(file):
     store = parse_store_name(store_line)
     df = raw.iloc[5:, [0, 7]]
     df.columns = ['Employee', 'Turn Time']
-    df['Store'] = store
+    df['Store'] = str(store)
     df['Employee'] = df['Employee'].apply(clean_name)
     df['Turn Time'] = pd.to_numeric(df['Turn Time'], errors='coerce')
     return df.dropna(subset=['Employee', 'Store'])
 
-def render_dashboard(df, store_id):
-    fig, ax = plt.subplots(figsize=(14, 0.6 * len(df) + 1))
+def merge_data(sales, turns):
+    sales['Store'] = sales['Store'].astype(str)
+    turns['Store'] = turns['Store'].astype(str)
+    return pd.merge(sales, turns, on=['Store', 'Employee'], how='left')
+
+def calculate_deltas(df_tw, df_lw):
+    merged = pd.merge(df_tw, df_lw, on=['Store', 'Employee'], suffixes=('', '_LW'), how='left')
+    for col in ['PPA', 'Discount %', 'Beverage %', 'Turn Time']:
+        if col + '_LW' in merged.columns:
+            merged[f'+/- {col} LW'] = merged[col] - merged[f'{col}_LW']
+            merged[f'{col}_LW'] = merged[f'{col}_LW'].round(2)
+        else:
+            merged[f'+/- {col} LW'] = 'NEW'
+    return merged
+
+def get_color(value, metric):
+    if value == 'NEW': return 'yellow'
+    try:
+        if metric == 'PPA':
+            return 'green' if value >= 15.5 else 'yellow' if 15.0 <= value < 15.5 else 'red'
+        if metric == 'Discount %':
+            return 'green' if value < 1.5 else 'yellow' if value < 2.0 else 'red'
+        if metric == 'Beverage %':
+            return 'green' if value > 18.5 else 'yellow' if value >= 18.0 else 'red'
+        if metric == 'Turn Time':
+            return 'green' if value < 35 else 'yellow' if value < 40 else 'red'
+    except:
+        return 'white'
+
+def get_delta_color(val):
+    if val == 'NEW': return 'yellow'
+    try:
+        if val > 0:
+            return 'green'
+        elif val < 0:
+            return 'red'
+        else:
+            return 'yellow'
+    except:
+        return 'white'
+
+def render_table(df, store_num):
+    store_name = STORE_NAMES.get(store_num, f"Store {store_num}")
+    df = df[df['Store'] == store_num].copy()
+    df = df.sort_values(by='PPA', ascending=False)
+    fig, ax = plt.subplots(figsize=(14, 0.5 + 0.4 * len(df)))
     ax.axis('off')
-    columns = [
-        ("Employee", None),
-        ("PPA", "PPA"), ("+/- PPA LW", "+/- PPA LW"),
-        ("Discount %", "Discount %"), ("+/- Disc % LW", "+/- Disc % LW"),
-        ("Beverage %", "Beverage %"), ("+/- Bev % LW", "+/- Bev % LW"),
-        ("Turn Time", "Turn Time"), ("+/- Turn LW", "+/- Turn LW")
-    ]
-    cell_w, cell_h = 1.4, 0.5
-    start_x, start_y = 0.5, len(df) * cell_h + 1.2
+    cols = ['Employee', 'PPA', '+/- PPA LW', 'Discount %', '+/- Discount % LW',
+            'Beverage %', '+/- Beverage % LW', 'Turn Time', '+/- Turn Time LW']
+    cell_data = df[cols].values.tolist()
+    table = plt.table(cellText=cell_data,
+                      colLabels=cols,
+                      loc='center',
+                      cellLoc='center',
+                      colLoc='center')
+    for i, row in enumerate(cell_data):
+        for j, val in enumerate(row):
+            color = 'white'
+            if j == 1: color = get_color(val, 'PPA')
+            elif j == 2: color = get_delta_color(val)
+            elif j == 3: color = get_color(val, 'Discount %')
+            elif j == 4: color = get_delta_color(val)
+            elif j == 5: color = get_color(val, 'Beverage %')
+            elif j == 6: color = get_delta_color(val)
+            elif j == 7: color = get_color(val, 'Turn Time')
+            elif j == 8: color = get_delta_color(val)
+            table[(i+1, j)].set_facecolor(color)
+            table[(i+1, j)].get_text().set_weight('bold')
+    table.scale(1, 2.0)
+    ax.set_title(f'Store {store_num} - Performance Comparison', fontsize=14, fontweight='bold')
+    return fig
 
-    def delta_color(metric, val):
-        if val == "NEW": return '#dcdcdc'
-        if pd.isna(val): return '#e0e0e0'
-        if metric == "+/- PPA LW": return '#a8e6a3' if val > 0 else '#f7a8a8' if val < 0 else '#fff3a3'
-        if metric == "+/- Disc % LW": return '#a8e6a3' if val < 0 else '#f7a8a8' if val > 0 else '#fff3a3'
-        if metric == "+/- Bev % LW": return '#a8e6a3' if val > 0 else '#f7a8a8' if val < 0 else '#fff3a3'
-        if metric == "+/- Turn LW": return '#a8e6a3' if val < 0 else '#f7a8a8' if val > 0 else '#fff3a3'
-        return '#fff3a3'
+# === Streamlit App ===
+st.title("Server Performance Dashboard")
 
-    def base_color(metric, value):
-        if pd.isna(value): return '#ffffff'
-        if metric == "PPA": return '#a8e6a3' if value >= 15.5 else '#fff3a3' if value >= 15.0 else '#f7a8a8'
-        if metric == "Discount %": return '#a8e6a3' if value < 1.5 else '#fff3a3' if value <= 1.99 else '#f7a8a8'
-        if metric == "Beverage %": return '#a8e6a3' if value > 18.5 else '#fff3a3' if value >= 18.0 else '#f7a8a8'
-        if metric == "Turn Time": return '#a8e6a3' if value < 35 else '#fff3a3' if value <= 39 else '#f7a8a8'
-        return '#ffffff'
+tw_sales = st.file_uploader("This Week: Sales (main)", type="xlsx", key="tw_sales")
+tw_turns = st.file_uploader("This Week: Turn Times", type="xlsx", accept_multiple_files=True)
+lw_sales = st.file_uploader("Last Week: Sales (main)", type="xlsx", key="lw_sales")
+lw_turns = st.file_uploader("Last Week: Turn Times", type="xlsx", accept_multiple_files=True)
 
-    for i, (col, _) in enumerate(columns):
-        x, y = start_x + i * cell_w, start_y
-        ax.add_patch(patches.Rectangle((x, y), cell_w, cell_h, color="#005792"))
-        ax.text(x + cell_w / 2, y + cell_h / 2, col, color='white', ha='center', va='center', fontsize=10, weight='bold')
+if tw_sales and tw_turns and lw_sales and lw_turns:
+    df_tw_sales = load_sales(tw_sales)
+    df_tw_turns = pd.concat([load_turn(f) for f in tw_turns])
+    df_lw_sales = load_sales(lw_sales)
+    df_lw_turns = pd.concat([load_turn(f) for f in lw_turns])
+    
+    df_this = merge_data(df_tw_sales, df_tw_turns)
+    df_last = merge_data(df_lw_sales, df_lw_turns)
+    df_final = calculate_deltas(df_this, df_last)
 
-    for i, row in df.iterrows():
-        y = start_y - (i + 1) * cell_h
-        for j, (col, _) in enumerate(columns):
-            x = start_x + j * cell_w
-            val = row[col]
-            suffix = "%" if "Discount" in col or "Beverage" in col else ""
-            disp = "NEW" if val == "NEW" else f"{val:.2f}{suffix}" if isinstance(val, float) else str(val) if pd.notna(val) else "–"
-            color = "#f5f5f5" if "Employee" in col else delta_color(col, val) if "+/-" in col else base_color(col, val)
-            ax.add_patch(patches.FancyBboxPatch((x, y), cell_w, cell_h, boxstyle="round,pad=0.1", edgecolor='white', facecolor=color))
-            ax.text(x + cell_w / 2, y + cell_h / 2, disp, ha='center', va='center', fontsize=9, weight='bold')
-
-    ax.set_xlim(0, start_x + len(columns) * cell_w)
-    ax.set_ylim(0, start_y + 1.5)
-    plt.title(f"📊 Store {store_id} – Performance Comparison", fontsize=16, pad=20, weight='bold')
-    path = f"Store_{store_id}_TW_vs_LW_FinalColorFix.png"
-    plt.tight_layout()
-    plt.savefig(path, dpi=300, bbox_inches='tight')
-    plt.close()
-    return path
-
-# Streamlit interface
-st.title("Peachtree Server Performance Dashboard")
-
-tw_main = st.file_uploader("This Week: Sales (main)", type="xlsx", key="tw_main")
-tw_turns = st.file_uploader("This Week: All Turn Time Files", type="xlsx", accept_multiple_files=True, key="tw_turns")
-lw_main = st.file_uploader("Last Week: Sales (main)", type="xlsx", key="lw_main")
-lw_turns = st.file_uploader("Last Week: All Turn Time Files", type="xlsx", accept_multiple_files=True, key="lw_turns")
-
-if st.button("Generate Dashboards"):
-    if not all([tw_main, lw_main]) or len(tw_turns) < 1 or len(lw_turns) < 1:
-        st.warning("Please upload all required files.")
-    else:
-        sales_tw = load_sales(tw_main)
-        sales_lw = load_sales(lw_main)
-        turn_tw = pd.concat([load_turn(f) for f in tw_turns])
-        turn_lw = pd.concat([load_turn(f) for f in lw_turns])
-
-        st.subheader("DEBUG: TW Store IDs (before merge)")
-        st.write(sales_tw['Store'].unique())
-
-        st.subheader("DEBUG: Turn Time Store IDs (TW)")
-        st.write(turn_tw['Store'].unique())
-
-        sales_tw = pd.merge(sales_tw, turn_tw, on=["Store", "Employee"], how="inner")
-        sales_lw = pd.merge(sales_lw, turn_lw, on=["Store", "Employee"], how="inner").rename(columns={
-            "PPA": "PPA_LW", "Discount %": "Discount %_LW",
-            "Beverage %": "Beverage %_LW", "Turn Time": "Turn Time_LW"
-        })
-
-        df = pd.merge(sales_tw, sales_lw, on=["Store", "Employee"], how="left")
-
-        st.subheader("DEBUG: Records per Store After Merge")
-        st.write(df['Store'].value_counts())
-
-        df["+/- PPA LW"] = df.apply(lambda r: r["PPA"] - r["PPA_LW"] if pd.notna(r["PPA_LW"]) else "NEW", axis=1)
-        df["+/- Disc % LW"] = df.apply(lambda r: r["Discount %"] - r["Discount %_LW"] if pd.notna(r["Discount %_LW"]) else "NEW", axis=1)
-        df["+/- Bev % LW"] = df.apply(lambda r: r["Beverage %"] - r["Beverage %_LW"] if pd.notna(r["Beverage %_LW"]) else "NEW", axis=1)
-        df["+/- Turn LW"] = df.apply(lambda r: r["Turn Time"] - r["Turn Time_LW"] if pd.notna(r["Turn Time_LW"]) else "NEW", axis=1)
-
-        view = df[[
-            "Store", "Employee", "PPA", "+/- PPA LW",
-            "Discount %", "+/- Disc % LW",
-            "Beverage %", "+/- Bev % LW",
-            "Turn Time", "+/- Turn LW"
-        ]].copy()
-
-        st.success("Files received! Dashboards will be displayed below.")
-        st.header("2. Dashboard Results")
-
-        st.write("### Store IDs in Final Data:")
-        st.write(view['Store'].unique())
-
-        for store_id in sorted(view['Store'].unique()):
-            store_df = view[view['Store'] == store_id].sort_values(by="PPA", ascending=False).reset_index(drop=True)
-            img_path = render_dashboard(store_df, store_id)
-            st.subheader(f"Store {store_id}")
-            st.image(img_path, caption=f"Dashboard for Store {store_id}", use_column_width=True)
+    st.subheader("2. Dashboard Results")
+    for store_id in sorted(df_final['Store'].unique()):
+        st.write(f"**Store {store_id}**")
+        fig = render_table(df_final, store_id)
+        st.pyplot(fig)
