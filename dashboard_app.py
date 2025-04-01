@@ -3,21 +3,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.1.6", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.1.8", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)  # Start reading from row 5 (0-indexed header=4)
-        df.columns = df.columns.str.strip()
+        df.columns = df.columns.str.strip().str.lower()
 
         # Strip out summary/footer rows
-        df = df[~df["Location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
-        df = df[df["Employee Name"].notna()]
-        df = df[df["Location"].notna()]
+        df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
+        df = df[df["employee name"].notna()]
+        df = df[df["location"].notna()]
 
         # Add normalized key
-        df["Location Key"] = df["Location"].astype(str).str.strip()
+        df["location key"] = df["location"].astype(str).str.strip()
 
         # Preview loaded columns (debugging aid)
         st.caption("Sales Data Columns: " + ", ".join(df.columns))
@@ -25,27 +25,26 @@ def parse_sales(file):
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
         return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Error reading sales file: {e}")
-        return pd.DataFrame()
 
 def parse_turn(file):
     try:
         df = pd.read_excel(file, header=4)  # Row 5 contains headers
-        df.columns = df.columns.str.strip()
-        if "Employee Name" not in df.columns:
+        df.columns = df.columns.str.strip().str.lower()
+        if "employee name" not in df.columns:
             st.error("❌ 'Employee Name' column missing in Turn Time file.")
             return pd.DataFrame()
+        if "avg mins" in df.columns:
+            df.rename(columns={"avg mins": "turn time"}, inplace=True)
         return df
     except Exception as e:
         st.error(f"Error reading turn file: {e}")
         return pd.DataFrame()
 
 def merge_data(sales_df, turn_df):
-    if "Employee Name" not in sales_df.columns or "Employee Name" not in turn_df.columns:
+    if "employee name" not in sales_df.columns or "employee name" not in turn_df.columns:
         st.error("❌ 'Employee Name' column is missing from one of the files.")
         return pd.DataFrame()
-    merged = pd.merge(sales_df, turn_df.drop(columns=[col for col in turn_df.columns if col in sales_df.columns and col != "Employee Name"]), on="Employee Name", how="left")
+    merged = pd.merge(sales_df, turn_df.drop(columns=[col for col in turn_df.columns if col in sales_df.columns and col != "employee name"]), on="employee name", how="left")
     return merged
 
 def compute_deltas(curr, prev, is_pct=False):
@@ -59,10 +58,10 @@ def compute_deltas(curr, prev, is_pct=False):
 
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
-    df = df.sort_values(by="PPA", ascending=False)
+    df = df.sort_values(by="ppa", ascending=False)
 
-    cols = ["Employee Name", "PPA", "+/- PPA LW", "Disc %", "+/- Disc % LW",
-            "Bev %", "+/- Bev % LW", "AVG MINS", "+/- Turn LW"]
+    cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
+            "bev %", "+/- bev % lw", "turn time", "+/- turn lw"]
 
     fig, ax = plt.subplots(figsize=(12, 0.6 * len(df)))
     ax.axis("off")
@@ -87,7 +86,7 @@ def render_comparison_table(df, location):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.1.6")
+st.title("📊 Server Performance Dashboard – v1.1.8")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
@@ -98,8 +97,8 @@ if tw_file and lw_file:
     lw_sales_df = parse_sales(lw_file)
 
     if not tw_sales_df.empty and not lw_sales_df.empty:
-        locations_tw = tw_sales_df["Location Key"].dropna().unique()
-        locations_lw = lw_sales_df["Location Key"].dropna().unique()
+        locations_tw = tw_sales_df["location key"].dropna().unique()
+        locations_lw = lw_sales_df["location key"].dropna().unique()
         all_locations = sorted(set(locations_tw) | set(locations_lw))
 
         with st.expander("🔍 Preview Detected Locations"):
@@ -128,8 +127,8 @@ if tw_file and lw_file:
                 tw_turn_df = parse_turn(files["tw"])
                 lw_turn_df = parse_turn(files["lw"])
 
-                tw_sales = tw_sales_df[tw_sales_df["Location Key"] == loc]
-                lw_sales = lw_sales_df[lw_sales_df["Location Key"] == loc]
+                tw_sales = tw_sales_df[tw_sales_df["location key"] == loc]
+                lw_sales = lw_sales_df[lw_sales_df["location key"] == loc]
 
                 merged_tw = merge_data(tw_sales, tw_turn_df)
                 merged_lw = merge_data(lw_sales, lw_turn_df)
@@ -140,9 +139,8 @@ if tw_file and lw_file:
 
                 final_df = merged_tw.copy()
 
-                # Ensure required columns are present in sales and turn data
-                required_sales_cols = ["PPA", "Disc %", "Bev %"]
-                required_turn_cols = ["AVG MINS"]
+                required_sales_cols = ["ppa", "disc %", "bev %"]
+                required_turn_cols = ["turn time"]
 
                 missing_sales = [col for col in required_sales_cols if col not in merged_tw.columns or col not in merged_lw.columns]
                 missing_turn = [col for col in required_turn_cols if col not in merged_tw.columns or col not in merged_lw.columns]
@@ -152,33 +150,33 @@ if tw_file and lw_file:
                     st.warning(f"Skipping {loc} due to missing columns: {', '.join(missing_all)}")
                     continue
 
-                merged_lw_dict = merged_lw.set_index("Employee Name").to_dict(orient="index")
+                merged_lw_dict = merged_lw.set_index("employee name").to_dict(orient="index")
 
-                final_df["+/- PPA LW"] = final_df["Employee Name"].apply(
+                final_df["+/- ppa lw"] = final_df["employee name"].apply(
                     lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "PPA"].values[0],
-                        merged_lw_dict.get(name, {}).get("PPA")
+                        final_df.loc[final_df["employee name"] == name, "ppa"].values[0],
+                        merged_lw_dict.get(name, {}).get("ppa")
                     )
                 )
 
-                final_df["+/- Disc % LW"] = final_df["Employee Name"].apply(
+                final_df["+/- disc % lw"] = final_df["employee name"].apply(
                     lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "Disc %"].values[0],
-                        merged_lw_dict.get(name, {}).get("Disc %"), True
+                        final_df.loc[final_df["employee name"] == name, "disc %"].values[0],
+                        merged_lw_dict.get(name, {}).get("disc %"), True
                     )
                 )
 
-                final_df["+/- Bev % LW"] = final_df["Employee Name"].apply(
+                final_df["+/- bev % lw"] = final_df["employee name"].apply(
                     lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "Bev %"].values[0],
-                        merged_lw_dict.get(name, {}).get("Bev %"), True
+                        final_df.loc[final_df["employee name"] == name, "bev %"].values[0],
+                        merged_lw_dict.get(name, {}).get("bev %"), True
                     )
                 )
 
-                final_df["+/- Turn LW"] = final_df["Employee Name"].apply(
+                final_df["+/- turn lw"] = final_df["employee name"].apply(
                     lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "AVG MINS"].values[0],
-                        merged_lw_dict.get(name, {}).get("AVG MINS")
+                        final_df.loc[final_df["employee name"] == name, "turn time"].values[0],
+                        merged_lw_dict.get(name, {}).get("turn time")
                     )
                 )
 
