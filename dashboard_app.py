@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.1.5", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.1.6", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -87,7 +87,7 @@ def render_comparison_table(df, location):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.1.5")
+st.title("📊 Server Performance Dashboard – v1.1.6")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
@@ -153,50 +153,32 @@ if tw_file and lw_file:
                     continue
 
                 merged_lw_dict = merged_lw.set_index("Employee Name").to_dict(orient="index")
+
                 final_df["+/- PPA LW"] = final_df["Employee Name"].apply(
-    lambda name: compute_deltas(
-        final_df.loc[final_df["Employee Name"] == name, "PPA"].values[0],
-        merged_lw_dict.get(name, {}).get("PPA")
-    )
-).get("PPA")
-    )
-).get("PPA")
+                    lambda name: compute_deltas(
+                        final_df.loc[final_df["Employee Name"] == name, "PPA"].values[0],
+                        merged_lw_dict.get(name, {}).get("PPA")
                     )
                 )
+
                 final_df["+/- Disc % LW"] = final_df["Employee Name"].apply(
-    lambda name: compute_deltas(
-        final_df.loc[final_df["Employee Name"] == name, "Disc %"].values[0],
-        merged_lw_dict.get(name, {}).get("Disc %"), True
-    )
-).get("Disc %"), True
-    )
-).get("Disc %"), True
-                    )
-                ).get("Discount %"), True
+                    lambda name: compute_deltas(
+                        final_df.loc[final_df["Employee Name"] == name, "Disc %"].values[0],
+                        merged_lw_dict.get(name, {}).get("Disc %"), True
                     )
                 )
+
                 final_df["+/- Bev % LW"] = final_df["Employee Name"].apply(
-    lambda name: compute_deltas(
-        final_df.loc[final_df["Employee Name"] == name, "Bev %"].values[0],
-        merged_lw_dict.get(name, {}).get("Bev %"), True
-    )
-).get("Bev %"), True
-    )
-).get("Bev %"), True
-                    )
-                ).get("Beverage %"), True
+                    lambda name: compute_deltas(
+                        final_df.loc[final_df["Employee Name"] == name, "Bev %"].values[0],
+                        merged_lw_dict.get(name, {}).get("Bev %"), True
                     )
                 )
+
                 final_df["+/- Turn LW"] = final_df["Employee Name"].apply(
-    lambda name: compute_deltas(
-        final_df.loc[final_df["Employee Name"] == name, "AVG MINS"].values[0],
-        merged_lw_dict.get(name, {}).get("AVG MINS")
-    )
-).get("AVG MINS")
-    )
-).get("AVG MINS")
-                    )
-                ).get("Turn Time")
+                    lambda name: compute_deltas(
+                        final_df.loc[final_df["Employee Name"] == name, "AVG MINS"].values[0],
+                        merged_lw_dict.get(name, {}).get("AVG MINS")
                     )
                 )
 
