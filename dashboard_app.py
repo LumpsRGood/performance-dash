@@ -123,6 +123,12 @@ if st.button("Generate Dashboards"):
         turn_tw = pd.concat([load_turn(f) for f in tw_turns])
         turn_lw = pd.concat([load_turn(f) for f in lw_turns])
 
+        st.subheader("DEBUG: TW Store IDs (before merge)")
+        st.write(sales_tw['Store'].unique())
+
+        st.subheader("DEBUG: Turn Time Store IDs (TW)")
+        st.write(turn_tw['Store'].unique())
+
         sales_tw = pd.merge(sales_tw, turn_tw, on=["Store", "Employee"], how="inner")
         sales_lw = pd.merge(sales_lw, turn_lw, on=["Store", "Employee"], how="inner").rename(columns={
             "PPA": "PPA_LW", "Discount %": "Discount %_LW",
@@ -130,6 +136,10 @@ if st.button("Generate Dashboards"):
         })
 
         df = pd.merge(sales_tw, sales_lw, on=["Store", "Employee"], how="left")
+
+        st.subheader("DEBUG: Records per Store After Merge")
+        st.write(df['Store'].value_counts())
+
         df["+/- PPA LW"] = df.apply(lambda r: r["PPA"] - r["PPA_LW"] if pd.notna(r["PPA_LW"]) else "NEW", axis=1)
         df["+/- Disc % LW"] = df.apply(lambda r: r["Discount %"] - r["Discount %_LW"] if pd.notna(r["Discount %_LW"]) else "NEW", axis=1)
         df["+/- Bev % LW"] = df.apply(lambda r: r["Beverage %"] - r["Beverage %_LW"] if pd.notna(r["Beverage %_LW"]) else "NEW", axis=1)
