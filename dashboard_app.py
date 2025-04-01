@@ -154,31 +154,39 @@ if tw_file and lw_file:
 
                 merged_lw_dict = merged_lw.set_index("Employee Name").to_dict(orient="index")
                 final_df["+/- PPA LW"] = final_df["Employee Name"].apply(
-                    lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "PPA"].values[0],
-                        merged_lw_dict.get(name, {}).get("PPA")
+    lambda name: compute_deltas(
+        final_df.loc[final_df["Employee Name"] == name, "PPA"].values[0],
+        merged_lw_dict.get(name, {}).get("PPA")
+    )
+).get("PPA")
                     )
                 )
                 final_df["+/- Disc % LW"] = final_df["Employee Name"].apply(
-                    lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "Disc %"].values[0],
-                        merged_lw_dict.get(name, {}).get("Disc %"), True
+    lambda name: compute_deltas(
+        final_df.loc[final_df["Employee Name"] == name, "Disc %"].values[0],
+        merged_lw_dict.get(name, {}).get("Disc %"), True
+    )
+).get("Disc %"), True
                     )
                 ).get("Discount %"), True
                     )
                 )
                 final_df["+/- Bev % LW"] = final_df["Employee Name"].apply(
-                    lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "Bev %"].values[0],
-                        merged_lw_dict.get(name, {}).get("Bev %"), True
+    lambda name: compute_deltas(
+        final_df.loc[final_df["Employee Name"] == name, "Bev %"].values[0],
+        merged_lw_dict.get(name, {}).get("Bev %"), True
+    )
+).get("Bev %"), True
                     )
                 ).get("Beverage %"), True
                     )
                 )
                 final_df["+/- Turn LW"] = final_df["Employee Name"].apply(
-                    lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "AVG MINS"].values[0],
-                        merged_lw_dict.get(name, {}).get("AVG MINS")
+    lambda name: compute_deltas(
+        final_df.loc[final_df["Employee Name"] == name, "AVG MINS"].values[0],
+        merged_lw_dict.get(name, {}).get("AVG MINS")
+    )
+).get("AVG MINS")
                     )
                 ).get("Turn Time")
                     )
