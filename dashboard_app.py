@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.0.4", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.0.5", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -12,6 +12,7 @@ def parse_sales(file):
         df.columns = df.columns.str.strip()
         df = df[~df["Location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
         df = df[df["Employee Name"].notna()]
+        df = df[df["Location"].notna()]
         df["Location Key"] = df["Location"].astype(str).str.strip()
         return df
     except Exception as e:
@@ -28,6 +29,9 @@ def parse_turn(file):
         return pd.DataFrame()
 
 def merge_data(sales_df, turn_df):
+    if "Employee Name" not in sales_df.columns or "Employee Name" not in turn_df.columns:
+        st.error("❌ 'Employee Name' column is missing from one of the files.")
+        return pd.DataFrame()
     return pd.merge(sales_df, turn_df, on="Employee Name", how="left")
 
 def compute_deltas(curr, prev, is_pct=False):
@@ -69,7 +73,7 @@ def render_comparison_table(df, location):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.0.4")
+st.title("📊 Server Performance Dashboard – v1.0.5")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
