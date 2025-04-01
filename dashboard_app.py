@@ -141,6 +141,10 @@ if st.button("Generate Dashboards"):
         st.success("Files received! Dashboards will be displayed below.")
         st.header("2. Dashboard Results")
 
+        # Debug: Show which stores are present in the final view
+        st.write("### Store IDs in Final Data:")
+        st.write(view['Store'].unique())
+
         for store_id, store_df in view.groupby("Store"):
             store_df = store_df.sort_values(by="PPA", ascending=False).reset_index(drop=True)
             img_path = render_dashboard(store_df, store_id)
