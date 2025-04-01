@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import os
+import re
 
 STORE_NAMES = {
     "3231": "Prattville",
@@ -14,8 +15,11 @@ STORE_NAMES = {
 def parse_store_name(name):
     if pd.isna(name): return None
     text = str(name).upper()
+    match = re.search(r"\b(3231|4445|4456|4463)\b", text)
+    if match:
+        return match.group(1)
     for sid, sname in STORE_NAMES.items():
-        if sname.upper() in text or sid in text:
+        if sname.upper() in text:
             return sid
     fallback = {"STORE 1": "3231", "STORE 2": "4445", "STORE 3": "4456", "STORE 4": "4463"}
     for k, v in fallback.items():
@@ -141,7 +145,6 @@ if st.button("Generate Dashboards"):
         st.success("Files received! Dashboards will be displayed below.")
         st.header("2. Dashboard Results")
 
-        # Debug: Show which stores are present in the final view
         st.write("### Store IDs in Final Data:")
         st.write(view['Store'].unique())
 
