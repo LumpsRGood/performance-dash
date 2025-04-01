@@ -35,7 +35,8 @@ def merge_data(sales_df, turn_df):
     if "Employee Name" not in sales_df.columns or "Employee Name" not in turn_df.columns:
         st.error("❌ 'Employee Name' column is missing from one of the files.")
         return pd.DataFrame()
-    return pd.merge(sales_df, turn_df, on="Employee Name", how="left")
+    merged = pd.merge(sales_df, turn_df.drop(columns=[col for col in turn_df.columns if col in sales_df.columns and col != "Employee Name"]), on="Employee Name", how="left")
+    return merged
 
 def compute_deltas(curr, prev, is_pct=False):
     try:
