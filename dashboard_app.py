@@ -9,7 +9,8 @@ STORE_NAMES = {
     "3231": "Prattville",
     "4445": "Montgomery",
     "4456": "Oxford",
-    "4463": "Decatur"
+    "4463": "Decatur",
+    "EASTERN BLVD": "4445"  # Accept this label as valid
 }
 
 def parse_store_name(name):
@@ -19,7 +20,10 @@ def parse_store_name(name):
     if match:
         return match.group(1)
     for sid, sname in STORE_NAMES.items():
-        if sname.upper() in text:
+        if sname.upper() in text or sid in text:
+            return sid
+    for label, sid in STORE_NAMES.items():  # Reverse match for names like "Eastern Blvd"
+        if label.upper() in text:
             return sid
     fallback = {"STORE 1": "3231", "STORE 2": "4445", "STORE 3": "4456", "STORE 4": "4463"}
     for k, v in fallback.items():
@@ -88,7 +92,7 @@ def render_dashboard(df, store_id):
 
     for i, row in df.iterrows():
         y = start_y - (i + 1) * cell_h
-        for j, (col, rule) in enumerate(columns):
+        for j, (col, _) in enumerate(columns):
             x = start_x + j * cell_w
             val = row[col]
             suffix = "%" if "Discount" in col or "Beverage" in col else ""
