@@ -10,7 +10,7 @@ def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip()
-        df["Store ID"] = df["Location"].astype(str).str.extract(r"(\\d{4})")
+        df["Store ID"] = df["Location"].astype(str).str.extract(r"(\d{4})")
         return df
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
