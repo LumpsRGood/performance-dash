@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.0.7", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.0.8", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -128,7 +128,14 @@ if tw_file and lw_file:
                     continue
 
                 final_df = merged_tw.copy()
-                final_df["+/- PPA LW"] = final_df.apply(lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)
+
+                # Ensure all required columns exist before attempting delta calculations
+                required_columns = ["PPA", "Discount %", "Beverage %", "Turn Time"]
+                for col in required_columns:
+                    if col not in merged_tw.columns or col not in merged_lw.columns:
+                        st.warning(f"Skipping {loc} due to missing column: '{col}'")
+                        continue
+"] = final_df.apply(lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)
                 final_df["+/- Disc % LW"] = final_df.apply(lambda r: compute_deltas(r["Discount %"], merged_lw.loc[r.name, "Discount %"], True), axis=1)
                 final_df["+/- Bev % LW"] = final_df.apply(lambda r: compute_deltas(r["Beverage %"], merged_lw.loc[r.name, "Beverage %"], True), axis=1)
                 final_df["+/- Turn LW"] = final_df.apply(lambda r: compute_deltas(r["Turn Time"], merged_lw.loc[r.name, "Turn Time"]), axis=1)
