@@ -3,19 +3,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.0.2", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.0.3", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip()
-
-        # Remove footer or non-data rows
         df = df[~df["Location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
-
-        # Extract 4-digit store IDs only
-        df["Store ID"] = df["Location"].astype(str).str.extract(r"(\d{4})")[0]
+        df["Location Key"] = df["Location"].astype(str).str.strip()
         return df
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
@@ -42,8 +38,8 @@ def compute_deltas(curr, prev, is_pct=False):
     except:
         return "NEW"
 
-def render_comparison_table(df, store_id):
-    st.subheader(f"📍 Store {store_id} Performance Comparison")
+def render_comparison_table(df, location):
+    st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="PPA", ascending=False)
 
     cols = ["Employee Name", "PPA", "+/- PPA LW", "Discount %", "+/- Disc % LW",
@@ -68,11 +64,11 @@ def render_comparison_table(df, store_id):
                 cell.set_facecolor("white")
                 cell.get_text().set_weight("bold")
 
-    plt.title(f"Store {store_id} – Server Performance", fontsize=12, weight="bold", pad=10)
+    plt.title(f"{location} – Server Performance", fontsize=12, weight="bold", pad=10)
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.0.2")
+st.title("📊 Server Performance Dashboard – v1.0.3")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
@@ -83,32 +79,32 @@ if tw_file and lw_file:
     lw_sales_df = parse_sales(lw_file)
 
     if not tw_sales_df.empty and not lw_sales_df.empty:
-        stores_tw = tw_sales_df["Store ID"].dropna().unique()
-        stores_lw = lw_sales_df["Store ID"].dropna().unique()
-        common_stores = sorted(set(stores_tw) & set(stores_lw))
+        locations_tw = tw_sales_df["Location Key"].dropna().unique()
+        locations_lw = lw_sales_df["Location Key"].dropna().unique()
+        all_locations = sorted(set(locations_tw) | set(locations_lw))
 
-        st.success(f"Sales data uploaded! Found stores: {', '.join(common_stores)}")
+        st.success(f"Sales data uploaded! Found locations: {', '.join(all_locations)}")
 
-        st.header("Step 2: Upload Turn Time Data Per Store")
-        store_turn_data = {}
+        st.header("Step 2: Upload Turn Time Data Per Location")
+        location_turn_data = {}
 
-        for store_id in common_stores:
-            st.subheader(f"Turn Time Files for Store {store_id}")
-            tw_turn = st.file_uploader(f"This Week's Turn Data for Store {store_id}", type=["xlsx"], key=f"tw_turn_{store_id}")
-            lw_turn = st.file_uploader(f"Last Week's Turn Data for Store {store_id}", type=["xlsx"], key=f"lw_turn_{store_id}")
+        for loc in all_locations:
+            st.subheader(f"Turn Time Files for Location: {loc}")
+            tw_turn = st.file_uploader(f"This Week's Turn Data for {loc}", type=["xlsx"], key=f"tw_turn_{loc}")
+            lw_turn = st.file_uploader(f"Last Week's Turn Data for {loc}", type=["xlsx"], key=f"lw_turn_{loc}")
 
             if tw_turn and lw_turn:
-                store_turn_data[store_id] = {"tw": tw_turn, "lw": lw_turn}
+                location_turn_data[loc] = {"tw": tw_turn, "lw": lw_turn}
 
-        if store_turn_data:
+        if location_turn_data:
             st.header("Step 3: Generate Dashboards")
 
-            for store_id, files in store_turn_data.items():
+            for loc, files in location_turn_data.items():
                 tw_turn_df = parse_turn(files["tw"])
                 lw_turn_df = parse_turn(files["lw"])
 
-                tw_sales = tw_sales_df[tw_sales_df["Store ID"] == store_id]
-                lw_sales = lw_sales_df[lw_sales_df["Store ID"] == store_id]
+                tw_sales = tw_sales_df[tw_sales_df["Location Key"] == loc]
+                lw_sales = lw_sales_df[lw_sales_df["Location Key"] == loc]
 
                 merged_tw = merge_data(tw_sales, tw_turn_df)
                 merged_lw = merge_data(lw_sales, lw_turn_df)
@@ -119,11 +115,11 @@ if tw_file and lw_file:
                 final_df["+/- Bev % LW"] = final_df.apply(lambda r: compute_deltas(r["Beverage %"], merged_lw.loc[r.name, "Beverage %"], True), axis=1)
                 final_df["+/- Turn LW"] = final_df.apply(lambda r: compute_deltas(r["Turn Time"], merged_lw.loc[r.name, "Turn Time"]), axis=1)
 
-                render_comparison_table(final_df, store_id)
+                render_comparison_table(final_df, loc)
 
             st.success("All dashboards generated!")
         else:
-            st.warning("Please upload Turn Time files for each store.")
+            st.warning("Please upload Turn Time files for each location.")
     else:
         st.warning("Could not parse one or both sales files. Check formatting.")
 else:
