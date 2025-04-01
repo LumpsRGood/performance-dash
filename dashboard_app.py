@@ -10,7 +10,7 @@ STORE_NAMES = {
     "4445": "Montgomery",
     "4456": "Oxford",
     "4463": "Decatur",
-    "EASTERN BLVD": "4445"  # Accept this label as valid
+    "EASTERN BLVD": "4445"
 }
 
 def parse_store_name(name):
@@ -110,7 +110,7 @@ def render_dashboard(df, store_id):
     plt.close()
     return path
 
-# ==== Streamlit App ====
+# Streamlit interface
 st.title("Peachtree Server Performance Dashboard")
 
 tw_main = st.file_uploader("This Week: Sales (main)", type="xlsx", key="tw_main")
@@ -162,8 +162,8 @@ if st.button("Generate Dashboards"):
         st.write("### Store IDs in Final Data:")
         st.write(view['Store'].unique())
 
-        for store_id, store_df in view.groupby("Store"):
-            store_df = store_df.sort_values(by="PPA", ascending=False).reset_index(drop=True)
+        for store_id in sorted(view['Store'].unique()):
+            store_df = view[view['Store'] == store_id].sort_values(by="PPA", ascending=False).reset_index(drop=True)
             img_path = render_dashboard(store_df, store_id)
             st.subheader(f"Store {store_id}")
-            st.image(img_path, caption=f"Dashboard for Store {store_id}", use_container_width=True)
+            st.image(img_path, caption=f"Dashboard for Store {store_id}", use_column_width=True)
