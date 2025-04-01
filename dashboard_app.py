@@ -29,7 +29,7 @@ def parse_store_name(name):
     if pd.isna(name):
         return None
     text = str(name).upper()
-    match = re.search(r"\b(3231|4445|4456|4463)\b", text)
+    match = re.search(r"\\b(3231|4445|4456|4463)\\b", text)
     if match:
         return match.group(1)
     for sid, sname in STORE_NAMES.items():
@@ -66,7 +66,7 @@ def merge_and_prepare(tw_sales, tw_turns, lw_sales, lw_turns):
 
     df_all = pd.merge(df, df_lw, on=["Employee Name", "Store"], how="left", suffixes=("", " LW"))
     df_all.fillna("NEW", inplace=True)
-    
+
     def format_change(curr, prev, is_pct=False):
         try:
             delta = float(curr) - float(prev)
@@ -75,7 +75,7 @@ def merge_and_prepare(tw_sales, tw_turns, lw_sales, lw_turns):
             return f"{delta:+.2f}"
         except:
             return "NEW"
-        
+
     df_all["+/- PPA LW"] = df_all.apply(lambda r: format_change(r["PPA"], r["PPA LW"]), axis=1)
     df_all["+/- Disc % LW"] = df_all.apply(lambda r: format_change(r["Discount %"], r["Discount % LW"], True), axis=1)
     df_all["+/- Bev % LW"] = df_all.apply(lambda r: format_change(r["Beverage %"], r["Beverage % LW"], True), axis=1)
@@ -98,10 +98,10 @@ def render_table(df, store_id):
 
     cols = ["Employee Name", "PPA", "+/- PPA LW", "Discount %", "+/- Disc % LW",
             "Beverage %", "+/- Bev % LW", "Turn Time", "+/- Turn LW"]
-    
+
     fig, ax = plt.subplots(figsize=(12, 0.6 * len(df)))
     ax.axis("off")
-    
+
     table_data = [cols] + df[cols].values.tolist()
     table = ax.table(cellText=table_data, colLabels=None, loc='center')
 
@@ -127,22 +127,16 @@ def render_table(df, store_id):
 st.title("📊 Server Performance Dashboard")
 
 with st.expander("Upload Files", expanded=True):
-    tw_file = st.file_uploader("This Week: Sales (main)", type=["xlsx"], key="tw_sales")
-    tw1 = st.file_uploader("This Week: Store 1 Turn Times", type=["xlsx"], key="tw1")
-    tw2 = st.file_uploader("This Week: Store 2 Turn Times", type=["xlsx"], key="tw2")
-    tw3 = st.file_uploader("This Week: Store 3 Turn Times", type=["xlsx"], key="tw3")
-    tw4 = st.file_uploader("This Week: Store 4 Turn Times", type=["xlsx"], key="tw4")
-    lw_file = st.file_uploader("Last Week: Sales (main)", type=["xlsx"], key="lw_sales")
-    lw1 = st.file_uploader("Last Week: Store 1 Turn Times", type=["xlsx"], key="lw1")
-    lw2 = st.file_uploader("Last Week: Store 2 Turn Times", type=["xlsx"], key="lw2")
-    lw3 = st.file_uploader("Last Week: Store 3 Turn Times", type=["xlsx"], key="lw3")
-    lw4 = st.file_uploader("Last Week: Store 4 Turn Times", type=["xlsx"], key="lw4")
+    tw_file = st.file_uploader("This Week: Sales Data", type=["xlsx"], key="tw_sales")
+    lw_file = st.file_uploader("Last Week: Sales Data", type=["xlsx"], key="lw_sales")
+    tw_turns_file = st.file_uploader("This Week: All Turn Times", type=["xlsx"], key="tw_turns")
+    lw_turns_file = st.file_uploader("Last Week: All Turn Times", type=["xlsx"], key="lw_turns")
 
-if tw_file and lw_file and tw1 and tw2 and tw3 and tw4 and lw1 and lw2 and lw3 and lw4:
+if tw_file and lw_file and tw_turns_file and lw_turns_file:
     tw_sales = load_data(tw_file)
     lw_sales = load_data(lw_file)
-    tw_turns = pd.concat([read_turn_file(f) for f in [tw1, tw2, tw3, tw4]], ignore_index=True)
-    lw_turns = pd.concat([read_turn_file(f) for f in [lw1, lw2, lw3, lw4]], ignore_index=True)
+    tw_turns = pd.concat([read_turn_file(tw_turns_file)], ignore_index=True)
+    lw_turns = pd.concat([read_turn_file(lw_turns_file)], ignore_index=True)
 
     final_df = merge_and_prepare(tw_sales, tw_turns, lw_sales, lw_turns)
     stores = final_df["Store"].dropna().unique()
@@ -154,4 +148,4 @@ if tw_file and lw_file and tw1 and tw2 and tw3 and tw4 and lw1 and lw2 and lw3 a
         st.subheader(f"Store {STORE_NAMES.get(store_id, store_id)}")
         render_table(final_df, store_id)
 else:
-    st.warning("Please upload all 10 required files to proceed.")
+    st.warning("Please upload all 4 required files to proceed.")
