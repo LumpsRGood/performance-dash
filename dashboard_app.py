@@ -142,14 +142,14 @@ st.title("📊 Server Performance Dashboard")
 with st.expander("Upload Files", expanded=True):
     tw_file = st.file_uploader("This Week: Sales Data", type=["xlsx"], key="tw_sales")
     lw_file = st.file_uploader("Last Week: Sales Data", type=["xlsx"], key="lw_sales")
-    tw_turns_file = st.file_uploader("This Week: All Turn Times", type=["xlsx"], key="tw_turns", accept_multiple_files=True)
-    lw_turns_file = st.file_uploader("Last Week: All Turn Times", type=["xlsx"], key="lw_turns", accept_multiple_files=True)
+    tw_turns_files = st.file_uploader("This Week: All Turn Times", type=["xlsx"], key="tw_turns", accept_multiple_files=True)
+    lw_turns_files = st.file_uploader("Last Week: All Turn Times", type=["xlsx"], key="lw_turns", accept_multiple_files=True)
 
-if tw_file and lw_file and tw_turns_file and lw_turns_file:
+if tw_file and lw_file and tw_turns_files and lw_turns_files:
     tw_sales = load_data(tw_file)
     lw_sales = load_data(lw_file)
-    tw_turns = pd.concat([read_turn_file(f) for f in tw_turns_file], ignore_index=True)
-    lw_turns = pd.concat([read_turn_file(f) for f in lw_turns_file], ignore_index=True)
+    tw_turns = pd.concat([read_turn_file(f) for f in tw_turns_files], ignore_index=True)
+    lw_turns = pd.concat([read_turn_file(f) for f in lw_turns_files], ignore_index=True)
 
     final_df = merge_and_prepare(tw_sales, tw_turns, lw_sales, lw_turns)
     stores = final_df["Store"].dropna().unique()
