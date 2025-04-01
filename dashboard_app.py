@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.0.8", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.0.9", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -76,7 +76,7 @@ def render_comparison_table(df, location):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.0.7")
+st.title("📊 Server Performance Dashboard – v1.0.9")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
@@ -131,11 +131,12 @@ if tw_file and lw_file:
 
                 # Ensure all required columns exist before attempting delta calculations
                 required_columns = ["PPA", "Discount %", "Beverage %", "Turn Time"]
-                for col in required_columns:
-                    if col not in merged_tw.columns or col not in merged_lw.columns:
-                        st.warning(f"Skipping {loc} due to missing column: '{col}'")
-                        continue
-"] = final_df.apply(lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)
+                if not all(col in merged_tw.columns and col in merged_lw.columns for col in required_columns):
+                    missing = [col for col in required_columns if col not in merged_tw.columns or col not in merged_lw.columns]
+                    st.warning(f"Skipping {loc} due to missing columns: {', '.join(missing)}")
+                    continue
+
+                final_df["+/- PPA LW"] = final_df.apply(lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)
                 final_df["+/- Disc % LW"] = final_df.apply(lambda r: compute_deltas(r["Discount %"], merged_lw.loc[r.name, "Discount %"], True), axis=1)
                 final_df["+/- Bev % LW"] = final_df.apply(lambda r: compute_deltas(r["Beverage %"], merged_lw.loc[r.name, "Beverage %"], True), axis=1)
                 final_df["+/- Turn LW"] = final_df.apply(lambda r: compute_deltas(r["Turn Time"], merged_lw.loc[r.name, "Turn Time"]), axis=1)
