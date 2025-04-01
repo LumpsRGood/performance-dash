@@ -1,5 +1,3 @@
-# Save this as dashboard_app.py
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -143,10 +141,8 @@ if st.button("Generate Dashboards"):
         st.success("Files received! Dashboards will be displayed below.")
         st.header("2. Dashboard Results")
 
-        cols = st.columns(2)
-        for i, (store_id, store_df) in enumerate(view.groupby("Store")):
+        for store_id, store_df in view.groupby("Store"):
             store_df = store_df.sort_values(by="PPA", ascending=False).reset_index(drop=True)
             img_path = render_dashboard(store_df, store_id)
-            with cols[i % 2]:
-                st.subheader(f"Store {store_id}")
-                st.image(img_path, caption=f"Dashboard for Store {store_id}", use_container_width=True)
+            st.subheader(f"Store {store_id}")
+            st.image(img_path, caption=f"Dashboard for Store {store_id}", use_container_width=True)
