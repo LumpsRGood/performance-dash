@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.1.0", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.1.1", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -76,7 +76,7 @@ def render_comparison_table(df, location):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.0.9")
+st.title("📊 Server Performance Dashboard – v1.1.0")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
@@ -129,11 +129,16 @@ if tw_file and lw_file:
 
                 final_df = merged_tw.copy()
 
-                # Ensure all required columns exist before attempting delta calculations
-                required_columns = ["PPA", "Discount %", "Beverage %", "Turn Time"]
-                if not all(col in merged_tw.columns and col in merged_lw.columns for col in required_columns):
-                    missing = [col for col in required_columns if col not in merged_tw.columns or col not in merged_lw.columns]
-                    st.warning(f"Skipping {loc} due to missing columns: {', '.join(missing)}")
+                # Ensure required columns are present in sales and turn data
+                required_sales_cols = ["PPA", "Discount %", "Beverage %"]
+                required_turn_cols = ["Turn Time"]
+
+                missing_sales = [col for col in required_sales_cols if col not in merged_tw.columns or col not in merged_lw.columns]
+                missing_turn = [col for col in required_turn_cols if col not in merged_tw.columns or col not in merged_lw.columns]
+
+                if missing_sales or missing_turn:
+                    missing_all = missing_sales + missing_turn
+                    st.warning(f"Skipping {loc} due to missing columns: {', '.join(missing_all)}")
                     continue
 
                 final_df["+/- PPA LW"] = final_df.apply(lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)
