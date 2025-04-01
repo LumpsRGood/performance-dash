@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.1.8", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.1.9", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -63,30 +63,18 @@ def render_comparison_table(df, location):
     cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
             "bev %", "+/- bev % lw", "turn time", "+/- turn lw"]
 
-    fig, ax = plt.subplots(figsize=(12, 0.6 * len(df)))
-    ax.axis("off")
+    display_df = df[cols].copy()
 
-    table_data = [cols] + df[cols].values.tolist()
-    table = ax.table(cellText=table_data, colLabels=None, loc='center')
+    # Format columns for readability
+    display_df["ppa"] = display_df["ppa"].map("{:.2f}".format)
+    display_df["disc %"] = display_df["disc %"].map("{:.2%}".format)
+    display_df["bev %"] = display_df["bev %"].map("{:.2%}".format)
+    display_df["turn time"] = display_df["turn time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "")
 
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
-
-    for i in range(len(table_data)):
-        for j in range(len(cols)):
-            cell = table[i, j]
-            if i == 0:
-                cell.set_text_props(weight="bold", color="white")
-                cell.set_facecolor("#003366")
-            else:
-                cell.set_facecolor("white")
-                cell.get_text().set_weight("bold")
-
-    plt.title(f"{location} – Server Performance", fontsize=12, weight="bold", pad=10)
-    st.pyplot(fig)
+    st.dataframe(display_df, use_container_width=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.1.8")
+st.title("📊 Server Performance Dashboard – v1.1.9")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
