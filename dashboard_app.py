@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.0.9", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.1.0", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -136,7 +136,7 @@ if tw_file and lw_file:
                     st.warning(f"Skipping {loc} due to missing columns: {', '.join(missing)}")
                     continue
 
-                final_df["+/- PPA LW"] = final_df.apply(lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)
+                final_df["+/- PPA LW"] = final_df.apply(lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)
                 final_df["+/- Disc % LW"] = final_df.apply(lambda r: compute_deltas(r["Discount %"], merged_lw.loc[r.name, "Discount %"], True), axis=1)
                 final_df["+/- Bev % LW"] = final_df.apply(lambda r: compute_deltas(r["Beverage %"], merged_lw.loc[r.name, "Beverage %"], True), axis=1)
                 final_df["+/- Turn LW"] = final_df.apply(lambda r: compute_deltas(r["Turn Time"], merged_lw.loc[r.name, "Turn Time"]), axis=1)
