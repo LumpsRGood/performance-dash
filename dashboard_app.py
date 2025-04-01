@@ -3,13 +3,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.0.2", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip()
+
+        # Remove footer or non-data rows
+        df = df[~df["Location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
+
+        # Extract 4-digit store IDs only
         df["Store ID"] = df["Location"].astype(str).str.extract(r"(\d{4})")[0]
         return df
     except Exception as e:
@@ -67,7 +72,7 @@ def render_comparison_table(df, store_id):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.0.1")
+st.title("📊 Server Performance Dashboard – v1.0.2")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
