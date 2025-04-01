@@ -8,13 +8,23 @@ st.set_page_config(page_title="Server Performance Dashboard - v1.1.4", layout="w
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
     try:
-        df = pd.read_excel(file, header=4)
+        df = pd.read_excel(file, header=4)  # Start reading from row 5 (0-indexed header=4)
         df.columns = df.columns.str.strip()
+
+        # Strip out summary/footer rows
         df = df[~df["Location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
         df = df[df["Employee Name"].notna()]
         df = df[df["Location"].notna()]
+
+        # Add normalized key
         df["Location Key"] = df["Location"].astype(str).str.strip()
+
+        # Preview loaded columns (debugging aid)
+        st.caption("Sales Data Columns: " + ", ".join(df.columns))
         return df
+    except Exception as e:
+        st.error(f"Error reading sales file: {e}")
+        return pd.DataFrame()
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
         return pd.DataFrame()
