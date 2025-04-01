@@ -61,8 +61,8 @@ def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="PPA", ascending=False)
 
-    cols = ["Employee Name", "PPA", "+/- PPA LW", "Discount %", "+/- Disc % LW",
-            "Beverage %", "+/- Bev % LW", "Turn Time", "+/- Turn LW"]
+    cols = ["Employee Name", "PPA", "+/- PPA LW", "Disc %", "+/- Disc % LW",
+            "Bev %", "+/- Bev % LW", "AVG MINS", "+/- Turn LW"]
 
     fig, ax = plt.subplots(figsize=(12, 0.6 * len(df)))
     ax.axis("off")
@@ -141,8 +141,8 @@ if tw_file and lw_file:
                 final_df = merged_tw.copy()
 
                 # Ensure required columns are present in sales and turn data
-                required_sales_cols = ["PPA", "Discount %", "Beverage %"]
-                required_turn_cols = ["Turn Time"]
+                required_sales_cols = ["PPA", "Disc %", "Bev %"]
+                required_turn_cols = ["AVG MINS"]
 
                 missing_sales = [col for col in required_sales_cols if col not in merged_tw.columns or col not in merged_lw.columns]
                 missing_turn = [col for col in required_turn_cols if col not in merged_tw.columns or col not in merged_lw.columns]
@@ -161,20 +161,26 @@ if tw_file and lw_file:
                 )
                 final_df["+/- Disc % LW"] = final_df["Employee Name"].apply(
                     lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "Discount %"].values[0],
-                        merged_lw_dict.get(name, {}).get("Discount %"), True
+                        final_df.loc[final_df["Employee Name"] == name, "Disc %"].values[0],
+                        merged_lw_dict.get(name, {}).get("Disc %"), True
+                    )
+                ).get("Discount %"), True
                     )
                 )
                 final_df["+/- Bev % LW"] = final_df["Employee Name"].apply(
                     lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "Beverage %"].values[0],
-                        merged_lw_dict.get(name, {}).get("Beverage %"), True
+                        final_df.loc[final_df["Employee Name"] == name, "Bev %"].values[0],
+                        merged_lw_dict.get(name, {}).get("Bev %"), True
+                    )
+                ).get("Beverage %"), True
                     )
                 )
                 final_df["+/- Turn LW"] = final_df["Employee Name"].apply(
                     lambda name: compute_deltas(
-                        final_df.loc[final_df["Employee Name"] == name, "Turn Time"].values[0],
-                        merged_lw_dict.get(name, {}).get("Turn Time")
+                        final_df.loc[final_df["Employee Name"] == name, "AVG MINS"].values[0],
+                        merged_lw_dict.get(name, {}).get("AVG MINS")
+                    )
+                ).get("Turn Time")
                     )
                 )
 
