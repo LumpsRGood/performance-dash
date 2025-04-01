@@ -10,7 +10,7 @@ def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip()
-        df["Store ID"] = df["Location"].astype(str).str.extract(r"(\d{4})")
+        df["Store ID"] = df["Location"].astype(str).str.extract(r"(\d{4})")[0]
         return df
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
@@ -67,7 +67,7 @@ def render_comparison_table(df, store_id):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard")
+st.title("📊 Server Performance Dashboard – v1.0.1")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
