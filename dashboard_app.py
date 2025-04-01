@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.1.3", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.1.4", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -76,7 +76,7 @@ def render_comparison_table(df, location):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.1.1")
+st.title("📊 Server Performance Dashboard – v1.1.4")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
@@ -141,10 +141,31 @@ if tw_file and lw_file:
                     st.warning(f"Skipping {loc} due to missing columns: {', '.join(missing_all)}")
                     continue
 
-                final_df["+/- PPA LW"] = final_df.apply(lambda r: compute_deltas(r["PPA"], merged_lw.loc[r.name, "PPA"]), axis=1)
-                final_df["+/- Disc % LW"] = final_df.apply(lambda r: compute_deltas(r["Discount %"], merged_lw.loc[r.name, "Discount %"], True), axis=1)
-                final_df["+/- Bev % LW"] = final_df.apply(lambda r: compute_deltas(r["Beverage %"], merged_lw.loc[r.name, "Beverage %"], True), axis=1)
-                final_df["+/- Turn LW"] = final_df.apply(lambda r: compute_deltas(r["Turn Time"], merged_lw.loc[r.name, "Turn Time"]), axis=1)
+                merged_lw_dict = merged_lw.set_index("Employee Name").to_dict(orient="index")
+                final_df["+/- PPA LW"] = final_df["Employee Name"].apply(
+                    lambda name: compute_deltas(
+                        final_df.loc[final_df["Employee Name"] == name, "PPA"].values[0],
+                        merged_lw_dict.get(name, {}).get("PPA")
+                    )
+                )
+                final_df["+/- Disc % LW"] = final_df["Employee Name"].apply(
+                    lambda name: compute_deltas(
+                        final_df.loc[final_df["Employee Name"] == name, "Discount %"].values[0],
+                        merged_lw_dict.get(name, {}).get("Discount %"), True
+                    )
+                )
+                final_df["+/- Bev % LW"] = final_df["Employee Name"].apply(
+                    lambda name: compute_deltas(
+                        final_df.loc[final_df["Employee Name"] == name, "Beverage %"].values[0],
+                        merged_lw_dict.get(name, {}).get("Beverage %"), True
+                    )
+                )
+                final_df["+/- Turn LW"] = final_df["Employee Name"].apply(
+                    lambda name: compute_deltas(
+                        final_df.loc[final_df["Employee Name"] == name, "Turn Time"].values[0],
+                        merged_lw_dict.get(name, {}).get("Turn Time")
+                    )
+                )
 
                 render_comparison_table(final_df, loc)
 
