@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import numpy as np
 import os
 import re
 
@@ -29,7 +30,7 @@ def parse_store_name(name):
     if pd.isna(name):
         return None
     text = str(name).upper()
-    match = re.search(r"\\b(3231|4445|4456|4463)\\b", text)
+    match = re.search(r"\b(3231|4445|4456|4463)\b", text)
     if match:
         return match.group(1)
     for sid, sname in STORE_NAMES.items():
@@ -45,30 +46,42 @@ def parse_store_name(name):
     return None
 
 def read_turn_file(file):
-    df = pd.read_excel(file)
-    store_id = parse_store_name(df.iloc[1, 0])
-    df = df.iloc[3:]
-    df.columns = df.iloc[0]
-    df = df[1:]
-    df["Store"] = store_id
-    return df
+    try:
+        df = pd.read_excel(file)
+        df.columns = df.columns.str.strip()
+        store_id = parse_store_name(df.iloc[1, 0])
+        df = df.iloc[3:].copy()
+        df.columns = df.iloc[0]
+        df = df[1:]
+        df.columns = df.columns.str.strip()
+        df["Store"] = store_id
+        return df
+    except Exception as e:
+        st.error(f"Error reading turn file: {e}")
+        return pd.DataFrame()
 
 def load_data(file, is_turn=False):
-    if is_turn:
-        return read_turn_file(file)
-    df = pd.read_excel(file)
-    df["Store"] = df["Location"].apply(parse_store_name)
-    return df
+    try:
+        if is_turn:
+            return read_turn_file(file)
+        df = pd.read_excel(file)
+        df.columns = df.columns.str.strip()
+        df["Store"] = df["Location"].apply(parse_store_name)
+        return df
+    except Exception as e:
+        st.error(f"Error reading sales file: {e}")
+        return pd.DataFrame()
 
 def merge_and_prepare(tw_sales, tw_turns, lw_sales, lw_turns):
     df = pd.merge(tw_sales, tw_turns, on=["Employee Name", "Store"], how="left")
     df_lw = pd.merge(lw_sales, lw_turns, on=["Employee Name", "Store"], how="left")
 
     df_all = pd.merge(df, df_lw, on=["Employee Name", "Store"], how="left", suffixes=("", " LW"))
-    df_all.fillna("NEW", inplace=True)
 
     def format_change(curr, prev, is_pct=False):
         try:
+            if pd.isna(curr) or pd.isna(prev):
+                return "NEW"
             delta = float(curr) - float(prev)
             if is_pct:
                 return f"{delta:+.2%}"
@@ -129,14 +142,14 @@ st.title("📊 Server Performance Dashboard")
 with st.expander("Upload Files", expanded=True):
     tw_file = st.file_uploader("This Week: Sales Data", type=["xlsx"], key="tw_sales")
     lw_file = st.file_uploader("Last Week: Sales Data", type=["xlsx"], key="lw_sales")
-    tw_turns_file = st.file_uploader("This Week: All Turn Times", type=["xlsx"], key="tw_turns")
-    lw_turns_file = st.file_uploader("Last Week: All Turn Times", type=["xlsx"], key="lw_turns")
+    tw_turns_file = st.file_uploader("This Week: All Turn Times", type=["xlsx"], key="tw_turns", accept_multiple_files=True)
+    lw_turns_file = st.file_uploader("Last Week: All Turn Times", type=["xlsx"], key="lw_turns", accept_multiple_files=True)
 
 if tw_file and lw_file and tw_turns_file and lw_turns_file:
     tw_sales = load_data(tw_file)
     lw_sales = load_data(lw_file)
-    tw_turns = pd.concat([read_turn_file(tw_turns_file)], ignore_index=True)
-    lw_turns = pd.concat([read_turn_file(lw_turns_file)], ignore_index=True)
+    tw_turns = pd.concat([read_turn_file(f) for f in tw_turns_file], ignore_index=True)
+    lw_turns = pd.concat([read_turn_file(f) for f in lw_turns_file], ignore_index=True)
 
     final_df = merge_and_prepare(tw_sales, tw_turns, lw_sales, lw_turns)
     stores = final_df["Store"].dropna().unique()
