@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.0.5", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.0.6", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -112,6 +112,17 @@ if tw_file and lw_file:
 
             for loc, files in location_turn_data.items():
                 tw_turn_df = parse_turn(files["tw"])
+                lw_turn_df = parse_turn(files["lw"])
+
+                tw_sales = tw_sales_df[tw_sales_df["Location Key"] == loc]
+                lw_sales = lw_sales_df[lw_sales_df["Location Key"] == loc]
+
+                merged_tw = merge_data(tw_sales, tw_turn_df)
+                merged_lw = merge_data(lw_sales, lw_turn_df)
+
+                if merged_tw.empty or merged_lw.empty:
+                    st.warning(f"Skipping {loc} due to missing or invalid data.")
+                    continue
                 lw_turn_df = parse_turn(files["lw"])
 
                 tw_sales = tw_sales_df[tw_sales_df["Location Key"] == loc]
