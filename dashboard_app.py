@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.0.3", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.0.4", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -11,6 +11,7 @@ def parse_sales(file):
         df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip()
         df = df[~df["Location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
+        df = df[df["Employee Name"].notna()]
         df["Location Key"] = df["Location"].astype(str).str.strip()
         return df
     except Exception as e:
@@ -68,7 +69,7 @@ def render_comparison_table(df, location):
     st.pyplot(fig)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.0.3")
+st.title("📊 Server Performance Dashboard – v1.0.4")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
@@ -82,6 +83,12 @@ if tw_file and lw_file:
         locations_tw = tw_sales_df["Location Key"].dropna().unique()
         locations_lw = lw_sales_df["Location Key"].dropna().unique()
         all_locations = sorted(set(locations_tw) | set(locations_lw))
+
+        with st.expander("🔍 Preview Detected Locations"):
+            st.write(pd.DataFrame({
+                "This Week": pd.Series(locations_tw),
+                "Last Week": pd.Series(locations_lw)
+            }))
 
         st.success(f"Sales data uploaded! Found locations: {', '.join(all_locations)}")
 
