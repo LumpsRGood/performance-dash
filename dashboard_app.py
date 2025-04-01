@@ -1,10 +1,11 @@
+# Save this as dashboard_app.py
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import os
 
-# === Constants ===
 STORE_NAMES = {
     "3231": "Prattville",
     "4445": "Montgomery",
@@ -12,37 +13,21 @@ STORE_NAMES = {
     "4463": "Decatur"
 }
 
-# === Smarter store parsing ===
 def parse_store_name(name):
     if pd.isna(name): return None
     text = str(name).upper()
-
     for sid, sname in STORE_NAMES.items():
         if sname.upper() in text or sid in text:
             return sid
-
-    # Handle fallback labels like 'Store 2'
     fallback = {"STORE 1": "3231", "STORE 2": "4445", "STORE 3": "4456", "STORE 4": "4463"}
     for k, v in fallback.items():
         if k in text:
             return v
-
     return None
 
 def clean_name(name):
     return str(name).strip().upper() if pd.notna(name) else None
 
-# === Upload interface ===
-st.title("Peachtree Server Performance Dashboard")
-st.markdown("Upload Excel files below for This Week and Last Week:")
-
-tw_main = st.file_uploader("This Week: Sales (main)", type="xlsx", key="tw_main")
-tw_turns = st.file_uploader("This Week: All Turn Time Files", type="xlsx", accept_multiple_files=True, key="tw_turns")
-
-lw_main = st.file_uploader("Last Week: Sales (main)", type="xlsx", key="lw_main")
-lw_turns = st.file_uploader("Last Week: All Turn Time Files", type="xlsx", accept_multiple_files=True, key="lw_turns")
-
-# === Helper functions ===
 def load_sales(file):
     raw = pd.read_excel(file, header=None)
     df = raw.iloc[5:, [0, 1, 4, 6, 11]]
@@ -64,7 +49,6 @@ def load_turn(file):
     df['Turn Time'] = pd.to_numeric(df['Turn Time'], errors='coerce')
     return df.dropna(subset=['Employee', 'Store'])
 
-# === Dashboard builder ===
 def render_dashboard(df, store_id):
     fig, ax = plt.subplots(figsize=(14, 0.6 * len(df) + 1))
     ax.axis('off')
@@ -79,46 +63,37 @@ def render_dashboard(df, store_id):
     start_x, start_y = 0.5, len(df) * cell_h + 1.2
 
     def delta_color(metric, val):
+        if val == "NEW": return '#dcdcdc'
         if pd.isna(val): return '#e0e0e0'
-        if metric == "+/- PPA LW":
-            return '#a8e6a3' if val > 0 else '#f7a8a8' if val < 0 else '#fff3a3'
-        elif metric == "+/- Disc % LW":
-            return '#a8e6a3' if val < 0 else '#f7a8a8' if val > 0 else '#fff3a3'
-        elif metric == "+/- Bev % LW":
-            return '#a8e6a3' if val > 0 else '#f7a8a8' if val < 0 else '#fff3a3'
-        elif metric == "+/- Turn LW":
-            return '#a8e6a3' if val < 0 else '#f7a8a8' if val > 0 else '#fff3a3'
+        if metric == "+/- PPA LW": return '#a8e6a3' if val > 0 else '#f7a8a8' if val < 0 else '#fff3a3'
+        if metric == "+/- Disc % LW": return '#a8e6a3' if val < 0 else '#f7a8a8' if val > 0 else '#fff3a3'
+        if metric == "+/- Bev % LW": return '#a8e6a3' if val > 0 else '#f7a8a8' if val < 0 else '#fff3a3'
+        if metric == "+/- Turn LW": return '#a8e6a3' if val < 0 else '#f7a8a8' if val > 0 else '#fff3a3'
         return '#fff3a3'
 
     def base_color(metric, value):
         if pd.isna(value): return '#ffffff'
-        if metric == "PPA":
-            return '#a8e6a3' if value >= 15.5 else '#fff3a3' if value >= 15.0 else '#f7a8a8'
-        elif metric == "Discount %":
-            return '#a8e6a3' if value < 1.5 else '#fff3a3' if value <= 1.99 else '#f7a8a8'
-        elif metric == "Beverage %":
-            return '#a8e6a3' if value > 18.5 else '#fff3a3' if value >= 18.0 else '#f7a8a8'
-        elif metric == "Turn Time":
-            return '#a8e6a3' if value < 35 else '#fff3a3' if value <= 39 else '#f7a8a8'
+        if metric == "PPA": return '#a8e6a3' if value >= 15.5 else '#fff3a3' if value >= 15.0 else '#f7a8a8'
+        if metric == "Discount %": return '#a8e6a3' if value < 1.5 else '#fff3a3' if value <= 1.99 else '#f7a8a8'
+        if metric == "Beverage %": return '#a8e6a3' if value > 18.5 else '#fff3a3' if value >= 18.0 else '#f7a8a8'
+        if metric == "Turn Time": return '#a8e6a3' if value < 35 else '#fff3a3' if value <= 39 else '#f7a8a8'
         return '#ffffff'
 
-    # Header
     for i, (col, _) in enumerate(columns):
         x, y = start_x + i * cell_w, start_y
         ax.add_patch(patches.Rectangle((x, y), cell_w, cell_h, color="#005792"))
-        ax.text(x + cell_w/2, y + cell_h/2, col, color='white', ha='center', va='center', fontsize=10, weight='bold')
+        ax.text(x + cell_w / 2, y + cell_h / 2, col, color='white', ha='center', va='center', fontsize=10, weight='bold')
 
-    # Rows
     for i, row in df.iterrows():
         y = start_y - (i + 1) * cell_h
         for j, (col, rule) in enumerate(columns):
             x = start_x + j * cell_w
             val = row[col]
             suffix = "%" if "Discount" in col or "Beverage" in col else ""
-            disp = f"{val:.2f}{suffix}" if isinstance(val, float) else str(val) if pd.notna(val) else "–"
+            disp = "NEW" if val == "NEW" else f"{val:.2f}{suffix}" if isinstance(val, float) else str(val) if pd.notna(val) else "–"
             color = "#f5f5f5" if "Employee" in col else delta_color(col, val) if "+/-" in col else base_color(col, val)
             ax.add_patch(patches.FancyBboxPatch((x, y), cell_w, cell_h, boxstyle="round,pad=0.1", edgecolor='white', facecolor=color))
-            ax.text(x + cell_w/2, y + cell_h/2, disp, ha='center', va='center', fontsize=9, weight='bold')
+            ax.text(x + cell_w / 2, y + cell_h / 2, disp, ha='center', va='center', fontsize=9, weight='bold')
 
     ax.set_xlim(0, start_x + len(columns) * cell_w)
     ax.set_ylim(0, start_y + 1.5)
@@ -129,7 +104,14 @@ def render_dashboard(df, store_id):
     plt.close()
     return path
 
-# === Trigger processing ===
+# ==== Streamlit App ====
+st.title("Peachtree Server Performance Dashboard")
+
+tw_main = st.file_uploader("This Week: Sales (main)", type="xlsx", key="tw_main")
+tw_turns = st.file_uploader("This Week: All Turn Time Files", type="xlsx", accept_multiple_files=True, key="tw_turns")
+lw_main = st.file_uploader("Last Week: Sales (main)", type="xlsx", key="lw_main")
+lw_turns = st.file_uploader("Last Week: All Turn Time Files", type="xlsx", accept_multiple_files=True, key="lw_turns")
+
 if st.button("Generate Dashboards"):
     if not all([tw_main, lw_main]) or len(tw_turns) < 1 or len(lw_turns) < 1:
         st.warning("Please upload all required files.")
@@ -141,14 +123,15 @@ if st.button("Generate Dashboards"):
 
         sales_tw = pd.merge(sales_tw, turn_tw, on=["Store", "Employee"], how="inner")
         sales_lw = pd.merge(sales_lw, turn_lw, on=["Store", "Employee"], how="inner").rename(columns={
-            "PPA": "PPA_LW", "Discount %": "Discount %_LW", "Beverage %": "Beverage %_LW", "Turn Time": "Turn Time_LW"
+            "PPA": "PPA_LW", "Discount %": "Discount %_LW",
+            "Beverage %": "Beverage %_LW", "Turn Time": "Turn Time_LW"
         })
 
-        df = pd.merge(sales_tw, sales_lw, on=["Store", "Employee"], how="inner")
-        df["+/- PPA LW"] = df["PPA"] - df["PPA_LW"]
-        df["+/- Disc % LW"] = df["Discount %"] - df["Discount %_LW"]
-        df["+/- Bev % LW"] = df["Beverage %"] - df["Beverage %_LW"]
-        df["+/- Turn LW"] = df["Turn Time"] - df["Turn Time_LW"]
+        df = pd.merge(sales_tw, sales_lw, on=["Store", "Employee"], how="left")
+        df["+/- PPA LW"] = df.apply(lambda r: r["PPA"] - r["PPA_LW"] if pd.notna(r["PPA_LW"]) else "NEW", axis=1)
+        df["+/- Disc % LW"] = df.apply(lambda r: r["Discount %"] - r["Discount %_LW"] if pd.notna(r["Discount %_LW"]) else "NEW", axis=1)
+        df["+/- Bev % LW"] = df.apply(lambda r: r["Beverage %"] - r["Beverage %_LW"] if pd.notna(r["Beverage %_LW"]) else "NEW", axis=1)
+        df["+/- Turn LW"] = df.apply(lambda r: r["Turn Time"] - r["Turn Time_LW"] if pd.notna(r["Turn Time_LW"]) else "NEW", axis=1)
 
         view = df[[
             "Store", "Employee", "PPA", "+/- PPA LW",
@@ -159,6 +142,7 @@ if st.button("Generate Dashboards"):
 
         st.success("Files received! Dashboards will be displayed below.")
         st.header("2. Dashboard Results")
+
         cols = st.columns(2)
         for i, (store_id, store_df) in enumerate(view.groupby("Store")):
             store_df = store_df.sort_values(by="PPA", ascending=False).reset_index(drop=True)
