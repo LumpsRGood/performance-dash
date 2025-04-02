@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.21", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.22", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -86,7 +86,7 @@ def disc_pct_bg(val):
         else:
             v = float(val)
         if v < 1.5:
-            return "background-color: #2e7d32; color: white; text-align: center; font-weight: bold"
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
         elif 1.5 <= v < 2.0:
             return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
         else:
@@ -138,10 +138,10 @@ def render_comparison_table(df, location):
             {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
         ], overwrite=False)
 
-    st.dataframe(styles, use_container_width=True)
+    st.dataframe(styles, use_container_width=True, hide_index=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.21")
+st.title("📊 Server Performance Dashboard – v1.2.22")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
