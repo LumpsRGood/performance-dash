@@ -3,23 +3,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.3", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.4", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
     try:
-        df = pd.read_excel(file, header=4)  # Start reading from row 5 (0-indexed header=4)
+        df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip().str.lower()
 
-        # Strip out summary/footer rows
         df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
-        df = df[df["employee name"].notna()]
-        df = df[df["location"].notna()]
-
-        # Add normalized key
+        df = df[df["employee name"].notna() & df["location"].notna()]
         df["location key"] = df["location"].astype(str).str.strip()
 
-        # Preview loaded columns (debugging aid)
         st.caption("Sales Data Columns: " + ", ".join(df.columns))
         return df
     except Exception as e:
@@ -28,11 +23,8 @@ def parse_sales(file):
 
 def parse_turn(file):
     try:
-        df = pd.read_excel(file, header=4)  # Row 5 contains headers
+        df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip().str.lower()
-        if "employee name" not in df.columns:
-            st.error("❌ 'Employee Name' column missing in Turn Time file.")
-            return pd.DataFrame()
         for col in df.columns:
             if col.strip().lower() == "avg mins":
                 df.rename(columns={col: "turn time"}, inplace=True)
@@ -117,6 +109,45 @@ def render_comparison_table(df, location):
     )
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.3")
+st.title("📊 Server Performance Dashboard – v1.2.4")
 
-# You can now continue re-adding the uploader logic and table rendering
+with st.expander("Step 1: Upload Sales Files"):
+    this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
+    last_week_file = st.file_uploader("Upload Last Week's Sales Data", type="xlsx", key="lw_sales")
+
+if this_week_file and last_week_file:
+    sales_tw = parse_sales(this_week_file)
+    sales_lw = parse_sales(last_week_file)
+
+    if not sales_tw.empty and not sales_lw.empty:
+        locations = sorted(sales_tw["location key"].unique())
+        st.success(f"✅ Sales data uploaded! Found locations: {', '.join(locations)}")
+
+        st.subheader("Step 2: Upload Turn Time Files")
+        turn_data = {}
+        for loc in locations:
+            st.markdown(f"**📍 {loc}**")
+            col1, col2 = st.columns(2)
+            with col1:
+                tw_file = st.file_uploader(f"This Week - {loc}", type="xlsx", key=f"tw_{loc}")
+            with col2:
+                lw_file = st.file_uploader(f"Last Week - {loc}", type="xlsx", key=f"lw_{loc}")
+            turn_data[loc] = {"this_week": tw_file, "last_week": lw_file}
+
+        if st.button("Step 3: Generate Dashboards"):
+            for loc in locations:
+                tw_file = turn_data[loc]["this_week"]
+                lw_file = turn_data[loc]["last_week"]
+                if tw_file and lw_file:
+                    tw_df = parse_turn(tw_file)
+                    lw_df = parse_turn(lw_file)
+                    if not tw_df.empty and not lw_df.empty:
+                        merged_tw = merge_data(sales_tw[sales_tw["location key"] == loc], tw_df)
+                        merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
+
+                        merged_tw["+/- ppa lw"] = merged_tw.apply(lambda r: compute_deltas(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1)
+                        merged_tw["+/- disc % lw"] = merged_tw.apply(lambda r: compute_deltas(r["disc %"], merged_lw.loc[r.name, "disc %"], True), axis=1)
+                        merged_tw["+/- bev % lw"] = merged_tw.apply(lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"], True), axis=1)
+                        merged_tw["+/- turn lw"] = merged_tw.apply(lambda r: compute_deltas(r["turn time"], merged_lw.loc[r.name, "turn time"]), axis=1)
+
+                        render_comparison_table(merged_tw, loc)
