@@ -1,98 +1,229 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+import re
+import io
+from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard", layout="wide")
-st.markdown("<h1 style='text-align: center;'>📊 Server Performance Dashboard – v1.2.28</h1>", unsafe_allow_html=True)
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.27", layout="wide")
 
-# ========== Helpers ==========
+# ---------- Utility Functions ---------- #
+def parse_sales(file):
+    try:
+        df = pd.read_excel(file, header=4)
+        df.columns = df.columns.str.strip().str.lower()
+        df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
+        df = df[df["employee name"].notna() & df["location"].notna()]
+        df["location key"] = df["location"].astype(str).str.strip()
+        st.caption("Sales Data Columns: " + ", ".join(df.columns))
+        return df
+    except Exception as e:
+        st.error(f"Error reading sales file: {e}")
+        return pd.DataFrame()
+
+def parse_turn(file):
+    try:
+        df = pd.read_excel(file, header=4)
+        df.columns = df.columns.str.strip().str.lower()
+        for col in df.columns:
+            if col.strip().lower() == "avg mins":
+                df.rename(columns={col: "turn time"}, inplace=True)
+        return df
+    except Exception as e:
+        st.error(f"Error reading turn file: {e}")
+        return pd.DataFrame()
+
+def merge_data(sales_df, turn_df):
+    if "employee name" not in sales_df.columns or "employee name" not in turn_df.columns:
+        st.error("❌ 'Employee Name' column is missing from one of the files.")
+        return pd.DataFrame()
+    return pd.merge(sales_df, turn_df.drop(columns=[
+        col for col in turn_df.columns if col in sales_df.columns and col != "employee name"
+    ]), on="employee name", how="left")
 
 def describe_change(curr, prev, is_pct=False):
     try:
         curr = float(curr)
         prev = float(prev)
         diff = curr - prev
-        direction = "Improved" if diff > 0 else "Declined" if diff < 0 else "No Change"
-        amount = f"{abs(diff):.2%}" if is_pct else f"{abs(diff):.2f}"
-        return f"{direction} by {amount}"
+        if diff > 0:
+            return f"Improved by {abs(diff):.2%}" if is_pct else f"Improved by {abs(diff):.2f}"
+        elif diff < 0:
+            return f"Declined by {abs(diff):.2%}" if is_pct else f"Declined by {abs(diff):.2f}"
+        else:
+            return "No Change"
     except:
-        return "No Change"
+        return "NEW"
 
-def get_color_class(val, col_name):
-    if col_name == "ppa":
-        if val >= 15.5: return "background-color: #145A32; color: white; font-weight: bold"
-        elif val >= 15.0: return "background-color: #9A7D0A; color: white; font-weight: bold"
-        else: return "background-color: #922B21; color: white; font-weight: bold"
-    elif col_name == "discount %":
-        if val < 1.5: return "background-color: #145A32; color: white; font-weight: bold"
-        elif val < 2.0: return "background-color: #9A7D0A; color: white; font-weight: bold"
-        else: return "background-color: #922B21; color: white; font-weight: bold"
-    elif col_name == "beverage %":
-        if val >= 18.5: return "background-color: #145A32; color: white; font-weight: bold"
-        elif val >= 18.0: return "background-color: #9A7D0A; color: white; font-weight: bold"
-        else: return "background-color: #922B21; color: white; font-weight: bold"
-    elif col_name == "turn time":
-        if val <= 35: return "background-color: #145A32; color: white; font-weight: bold"
-        elif val <= 39: return "background-color: #9A7D0A; color: white; font-weight: bold"
-        else: return "background-color: #922B21; color: white; font-weight: bold"
-    return ""
-
-def get_change_color(text, positive_good=True):
-    if "Improved" in text:
-        return "background-color: #145A32; color: white; font-weight: bold" if positive_good else "background-color: #922B21; color: white; font-weight: bold"
-    elif "Declined" in text:
-        return "background-color: #922B21; color: white; font-weight: bold" if positive_good else "background-color: #145A32; color: white; font-weight: bold"
-    else:
-        return "background-color: #9A7D0A; color: white; font-weight: bold"
-
-def style_table(df):
-    styled = df.style
-    for col in df.columns:
-        if col in ["ppa", "discount %", "beverage %", "turn time"]:
-            styled = styled.applymap(lambda v: get_color_class(v, col), subset=[col])
-        elif col == "+/- ppa lw":
-            styled = styled.applymap(lambda v: get_change_color(v, True), subset=[col])
-        elif col == "+/- discount % lw":
-            styled = styled.applymap(lambda v: get_change_color(v, False), subset=[col])
-        elif col == "+/- beverage % lw":
-            styled = styled.applymap(lambda v: get_change_color(v, True), subset=[col])
-        elif col == "+/- turn time lw":
-            styled = styled.applymap(lambda v: get_change_color(v, False), subset=[col])
-    return styled
-
-# ========== Uploads ==========
-
-st.subheader("📤 Upload This Week's Sales Data (Employee Sales Statistics File)")
-tw_file = st.file_uploader("This Week", type=["xlsx"], key="thisweek")
-
-st.subheader("📤 Upload Last Week's Sales Data")
-lw_file = st.file_uploader("Last Week", type=["xlsx"], key="lastweek")
-
-if tw_file and lw_file:
+def style_lw_change(val, inverse=False):
     try:
-        df_tw = pd.read_excel(tw_file, skiprows=4)
-        df_lw = pd.read_excel(lw_file, skiprows=4)
+        if isinstance(val, str):
+            if "No Change" in val:
+                return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
+            elif "Improved" in val:
+                return (
+                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                    if not inverse else
+                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                )
+            elif "Declined" in val:
+                return (
+                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                    if not inverse else
+                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                )
+        return "text-align: center"
+    except:
+        return "text-align: center"
 
-        df_tw.columns = [c.lower().strip() for c in df_tw.columns]
-        df_lw.columns = [c.lower().strip() for c in df_lw.columns]
+def ppa_bg(val):
+    try:
+        v = float(val)
+        if v >= 15.5:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        elif 15.0 <= v < 15.5:
+            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+    except:
+        return "text-align: center; font-weight: bold"
 
-        # Use lowercase column names for consistency
-        df_lw = df_lw.set_index("employee name")
-        df_tw = df_tw.set_index("employee name")
+def disc_pct_bg(val):
+    try:
+        v = float(val.strip('%')) if isinstance(val, str) else float(val)
+        if v < 1.5:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        elif 1.5 <= v < 2.0:
+            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
+    except:
+        return "text-align: center; font-weight: bold"
 
-        df_merged = df_tw[["ppa", "disc %", "bev %", "turn time"]].copy()
+def bev_pct_bg(val):
+    try:
+        v = float(val.strip('%')) if isinstance(val, str) else float(val)
+        if v >= 18.5:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        elif 18.0 <= v < 18.5:
+            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
+    except:
+        return "text-align: center; font-weight: bold"
 
-        df_merged["+/- ppa lw"] = df_merged.apply(lambda r: describe_change(r["ppa"], df_lw.loc[r.name, "ppa"]), axis=1)
-        df_merged["+/- discount % lw"] = df_merged.apply(lambda r: describe_change(r["disc %"], df_lw.loc[r.name, "disc %"], is_pct=True), axis=1)
-        df_merged["+/- beverage % lw"] = df_merged.apply(lambda r: describe_change(r["bev %"], df_lw.loc[r.name, "bev %"], is_pct=True), axis=1)
-        df_merged["+/- turn time lw"] = df_merged.apply(lambda r: describe_change(r["turn time"], df_lw.loc[r.name, "turn time"]), axis=1)
+def turn_time_bg(val):
+    try:
+        v = float(val)
+        if v <= 35:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        elif 36 <= v <= 39:
+            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+    except:
+        return "text-align: center"
 
-        df_merged["discount %"] = df_merged.pop("disc %")
-        df_merged["beverage %"] = df_merged.pop("bev %")
-        df_merged = df_merged.reset_index()
+def download_excel(df, location):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name="Dashboard")
+    output.seek(0)
+    filename = f"{location.replace(' ', '_')}_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    st.download_button(
+        label=f"📥 Download Excel for {location}",
+        data=output,
+        file_name=filename,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
-        st.dataframe(style_table(df_merged), use_container_width=True, hide_index=True)
+def render_comparison_table(df, location):
+    st.subheader(f"📍 Location: {location} Performance Comparison")
+    df = df.sort_values(by="ppa", ascending=False)
 
-    except Exception as e:
-        st.error(f"⚠️ Error processing files: {e}")
-else:
-    st.info("Please upload both This Week and Last Week sales Excel files to begin.")
+    cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
+            "bev %", "+/- bev % lw", "turn time", "+/- turn lw"]
+    display_df = df[cols].copy()
+
+    display_df.rename(columns={
+        "employee name": "Employee Name", "ppa": "PPA",
+        "+/- ppa lw": "+/- PPA LW", "disc %": "Discount %",
+        "+/- disc % lw": "+/- Discount % LW", "bev %": "Beverage %",
+        "+/- bev % lw": "+/- Beverage % LW", "turn time": "Turn Time",
+        "+/- turn lw": "+/- Turn Time LW"
+    }, inplace=True)
+
+    display_df["PPA"] = display_df["PPA"].map("{:.2f}".format)
+    display_df["Discount %"] = display_df["Discount %"].map("{:.2%}".format)
+    display_df["Beverage %"] = display_df["Beverage %"].map("{:.2%}".format)
+    display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
+
+    styles = display_df.style \
+        .applymap(ppa_bg, subset=["PPA"]) \
+        .applymap(disc_pct_bg, subset=["Discount %"]) \
+        .applymap(bev_pct_bg, subset=["Beverage %"]) \
+        .applymap(turn_time_bg, subset=["Turn Time"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- Discount % LW", "+/- Turn Time LW"]) \
+        .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
+        .set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
+            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
+        ], overwrite=False)
+
+    st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
+    download_excel(display_df, location)
+
+# ---------- Streamlit UI ---------- #
+st.title("📊 Server Performance Dashboard – v1.2.27")
+
+with st.expander("Step 1: Upload Sales Files", expanded=True):
+    st.markdown("### 📄 Upload the file labeled: **Employee Sales Statistics**")
+    this_week_file = st.file_uploader("", type="xlsx", key="tw_sales")
+    st.markdown("### 📄 Upload the file labeled: **Employee Sales Statistics** (Last Week)")
+    last_week_file = st.file_uploader("", type="xlsx", key="lw_sales")
+
+if this_week_file and last_week_file:
+    sales_tw = parse_sales(this_week_file)
+    sales_lw = parse_sales(last_week_file)
+
+    if not sales_tw.empty and not sales_lw.empty:
+        locations = sorted(sales_tw["location key"].unique())
+        st.success(f"✅ Sales data uploaded! Found locations: {', '.join(locations)}")
+
+        st.subheader("Step 2: Upload Turn Time Files")
+        turn_data = {}
+        for loc in locations:
+            st.markdown(f"**📍 {loc}**")
+            col1, col2 = st.columns(2)
+            with col1:
+                tw_file = st.file_uploader(f"This Week - {loc}", type="xlsx", key=f"tw_{loc}")
+            with col2:
+                lw_file = st.file_uploader(f"Last Week - {loc}", type="xlsx", key=f"lw_{loc}")
+            turn_data[loc] = {"this_week": tw_file, "last_week": lw_file}
+
+        if st.button("Step 3: Generate Dashboards"):
+            for loc in locations:
+                tw_file = turn_data[loc]["this_week"]
+                lw_file = turn_data[loc]["last_week"]
+                if tw_file and lw_file:
+                    tw_df = parse_turn(tw_file)
+                    lw_df = parse_turn(lw_file)
+                    if not tw_df.empty and not lw_df.empty:
+                        merged_tw = merge_data(sales_tw[sales_tw["location key"] == loc], tw_df)
+                        merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
+
+                        merged_tw["+/- ppa lw"] = merged_tw.apply(
+                            lambda r: describe_change(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1
+                        )
+                        merged_tw["+/- disc % lw"] = merged_tw.apply(
+                            lambda r: describe_change(merged_lw.loc[r.name, "disc %"], r["disc %"], is_pct=True), axis=1
+                        )
+                        merged_tw["+/- bev % lw"] = merged_tw.apply(
+                            lambda r: describe_change(r["bev %"], merged_lw.loc[r.name, "bev %"], is_pct=True), axis=1
+                        )
+                        merged_tw["+/- turn lw"] = merged_tw.apply(
+                            lambda r: describe_change(merged_lw.loc[r.name, "turn time"], r["turn time"]), axis=1
+                        )
+
+                        render_comparison_table(merged_tw, loc)
