@@ -5,7 +5,8 @@ import re
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.27", layout="wide")
+# ---------- Streamlit Config ---------- #
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.32", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -124,19 +125,6 @@ def turn_time_bg(val):
     except:
         return "text-align: center"
 
-def download_excel(df, location):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output) as writer:  # ← FIXED (removed engine='xlsxwriter')
-        df.to_excel(writer, index=False, sheet_name="Dashboard")
-    output.seek(0)
-    filename = f"{location.replace(' ', '_')}_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    st.download_button(
-        label=f"📥 Download Excel for {location}",
-        data=output,
-        file_name=filename,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
@@ -164,7 +152,7 @@ def render_comparison_table(df, location):
         .applymap(bev_pct_bg, subset=["Beverage %"]) \
         .applymap(turn_time_bg, subset=["Turn Time"]) \
         .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW"]) \
-        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- Discount % LW", "+/- Turn Time LW"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW", "+/- Turn Time LW"]) \
         .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
@@ -172,10 +160,9 @@ def render_comparison_table(df, location):
         ], overwrite=False)
 
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
-    download_excel(display_df, location)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.27")
+st.title("📊 Server Performance Dashboard – v1.2.32")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
