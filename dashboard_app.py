@@ -5,8 +5,7 @@ import re
 import io
 from datetime import datetime
 
-# ---------- Streamlit Config ---------- #
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.32", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.28", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -162,7 +161,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.32")
+st.title("📊 Server Performance Dashboard – v1.2.28")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
