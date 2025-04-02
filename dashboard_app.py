@@ -1,9 +1,9 @@
-import streamlit as st
+""import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.11", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.12", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -105,15 +105,15 @@ def render_comparison_table(df, location):
         display_df.style
             .applymap(style_deltas_text, subset=["+/- PPA LW"])
             .applymap(style_ppa_text, subset=["PPA"])
+            .set_properties(**{'text-align': 'center', 'font-weight': 'bold'})
             .set_table_styles([
-                {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
-                {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
+                {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
             ]),
         use_container_width=True
     )
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.11")
+st.title("📊 Server Performance Dashboard – v1.2.12")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
