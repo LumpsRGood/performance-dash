@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.17", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.18", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -49,29 +49,29 @@ def compute_deltas(curr, prev, is_pct=False):
     except:
         return "NEW"
 
-def style_deltas_text(val):
+def bg_color(val, pos_color, neutral_color, neg_color, thresholds=(0, 0)):
     try:
         if isinstance(val, str) and "NEW" in val:
-            return "color: gray; font-weight: bold; text-align: center"
+            return "background-color: #b0bec5; color: white; text-align: center; font-weight: bold"
         v = float(val.strip('%+'))
-        if v > 0:
-            return "color: #2e7d32; font-weight: bold; text-align: center"
-        elif v < 0:
-            return "color: #c62828; font-weight: bold; text-align: center"
+        if v > thresholds[1]:
+            return f"background-color: {pos_color}; color: white; text-align: center; font-weight: bold"
+        elif v < thresholds[0]:
+            return f"background-color: {neg_color}; color: white; text-align: center; font-weight: bold"
         else:
-            return "color: gray; font-weight: bold; text-align: center"
+            return f"background-color: {neutral_color}; color: white; text-align: center; font-weight: bold"
     except:
         return "text-align: center; font-weight: bold"
 
-def style_ppa_text(val):
+def ppa_bg(val):
     try:
         v = float(val)
         if v >= 15.5:
-            return "color: #2e7d32; font-weight: bold; text-align: center"
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
         elif 15.0 <= v < 15.5:
-            return "color: #fbc02d; font-weight: bold; text-align: center"
+            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
         else:
-            return "color: #c62828; font-weight: bold; text-align: center"
+            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
     except:
         return "text-align: center; font-weight: bold"
 
@@ -102,8 +102,11 @@ def render_comparison_table(df, location):
     display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
     styles = display_df.style \
-        .applymap(style_deltas_text, subset=["+/- PPA LW", "+/- Discount % LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
-        .applymap(style_ppa_text, subset=["PPA"]) \
+        .applymap(ppa_bg, subset=["PPA"]) \
+        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- PPA LW"]) \
+        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- Discount % LW"]) \
+        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- Beverage % LW"]) \
+        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- Turn Time LW"]) \
         .set_properties(**{
             'text-align': 'center',
             'vertical-align': 'middle',
@@ -118,7 +121,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.17")
+st.title("📊 Server Performance Dashboard – v1.2.18")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
