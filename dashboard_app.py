@@ -126,7 +126,7 @@ def turn_time_bg(val):
 
 def download_excel(df, location):
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output) as writer:  # ← FIXED (removed engine='xlsxwriter')
         df.to_excel(writer, index=False, sheet_name="Dashboard")
     output.seek(0)
     filename = f"{location.replace(' ', '_')}_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
