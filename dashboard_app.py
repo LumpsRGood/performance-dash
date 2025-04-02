@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import re
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.27", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.28", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -34,9 +35,6 @@ def parse_turn(file):
         return pd.DataFrame()
 
 def merge_data(sales_df, turn_df):
-    if "employee name" not in sales_df.columns or "employee name" not in turn_df.columns:
-        st.error("❌ 'Employee Name' column is missing from one of the files.")
-        return pd.DataFrame()
     return pd.merge(sales_df, turn_df.drop(columns=[
         col for col in turn_df.columns if col in sales_df.columns and col != "employee name"
     ]), on="employee name", how="left")
@@ -55,132 +53,119 @@ def describe_change(curr, prev, is_pct=False):
     except:
         return "NEW"
 
-def style_lw_change(val, inverse=False):
+# ---------- Styling Rules ---------- #
+def get_cell_color(val, good_thresh, warn_thresh, bad_thresh, inverse=False):
     try:
-        if isinstance(val, str):
-            if "No Change" in val:
-                return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
-            elif "Improved" in val:
-                return (
-                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
-                    if not inverse else
-                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
-                )
-            elif "Declined" in val:
-                return (
-                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
-                    if not inverse else
-                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
-                )
-        return "text-align: center"
-    except:
-        return "text-align: center"
-
-def ppa_bg(val):
-    try:
-        v = float(val)
-        if v >= 15.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 15.0 <= v < 15.5:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+        v = float(val.replace('%', '').strip()) if isinstance(val, str) else float(val)
+        if inverse:
+            if v <= good_thresh:
+                return '#1b5e20'
+            elif v <= warn_thresh:
+                return '#f9a825'
+            else:
+                return '#b71c1c'
         else:
-            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+            if v >= good_thresh:
+                return '#1b5e20'
+            elif v >= warn_thresh:
+                return '#f9a825'
+            else:
+                return '#b71c1c'
     except:
-        return "text-align: center; font-weight: bold"
+        return '#b0bec5'
 
-def disc_pct_bg(val):
-    try:
-        v = float(val.strip('%')) if isinstance(val, str) else float(val)
-        if v < 1.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 1.5 <= v < 2.0:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
-        else:
-            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
-    except:
-        return "text-align: center; font-weight: bold"
+def download_table_as_png(df, title):
+    cols = df.columns.tolist()
+    fig, ax = plt.subplots(figsize=(len(cols) * 1.2, 0.6 * len(df) + 1.5))
+    ax.axis("off")
+    table_data = [cols] + df.values.tolist()
+    table = ax.table(cellText=table_data, colLabels=None, loc='center')
 
-def bev_pct_bg(val):
-    try:
-        v = float(val.strip('%')) if isinstance(val, str) else float(val)
-        if v >= 18.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 18.0 <= v < 18.5:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
-        else:
-            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
-    except:
-        return "text-align: center; font-weight: bold"
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
 
-def turn_time_bg(val):
-    try:
-        v = float(val)
-        if v <= 35:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 36 <= v <= 39:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
-        else:
-            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
-    except:
-        return "text-align: center"
+    for i, row in enumerate(table_data):
+        for j, val in enumerate(row):
+            cell = table[i, j]
+            if i == 0:
+                cell.set_text_props(weight="bold", color="white")
+                cell.set_facecolor("#003366")
+            else:
+                col_name = cols[j].lower()
+                color = "white"
+                bgcolor = "white"
+                try:
+                    if "ppa" in col_name:
+                        bgcolor = get_cell_color(val, 15.5, 15.0, 0)
+                        color = "white" if bgcolor != '#f9a825' else 'black'
+                    elif "disc %" in col_name:
+                        bgcolor = get_cell_color(val, 0, 1.5, 2.0, inverse=True)
+                        color = "white" if bgcolor != '#f9a825' else 'black'
+                    elif "bev %" in col_name:
+                        bgcolor = get_cell_color(val, 18.5, 18.0, 0)
+                        color = "white" if bgcolor != '#f9a825' else 'black'
+                    elif "turn time" in col_name:
+                        bgcolor = get_cell_color(val, 35, 39, 100, inverse=True)
+                        color = "white" if bgcolor != '#f9a825' else 'black'
+                    elif "+/-" in col_name:
+                        if "Improved" in str(val):
+                            bgcolor = '#1b5e20'
+                        elif "Declined" in str(val):
+                            bgcolor = '#b71c1c'
+                        else:
+                            bgcolor = '#f9a825'
+                        color = "white" if bgcolor != '#f9a825' else 'black'
+                except:
+                    bgcolor = "white"
+                cell.set_facecolor(bgcolor)
+                cell.get_text().set_color(color)
+                cell.get_text().set_fontweight("bold")
+                cell.get_text().set_ha("center")
 
-def download_excel(df, location):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name="Dashboard")
-    output.seek(0)
-    filename = f"{location.replace(' ', '_')}_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    st.download_button(
-        label=f"📥 Download Excel for {location}",
-        data=output,
-        file_name=filename,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    plt.title(title, fontsize=14, weight="bold", pad=10)
 
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png', bbox_inches="tight", dpi=200)
+    buffer.seek(0)
+    return buffer
+
+# ---------- Dashboard Renderer ---------- #
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
 
-    cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
-            "bev %", "+/- bev % lw", "turn time", "+/- turn lw"]
-    display_df = df[cols].copy()
+    display_df = df[[
+        "employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
+        "bev %", "+/- bev % lw", "turn time", "+/- turn lw"
+    ]].copy()
 
-    display_df.rename(columns={
-        "employee name": "Employee Name", "ppa": "PPA",
-        "+/- ppa lw": "+/- PPA LW", "disc %": "Discount %",
-        "+/- disc % lw": "+/- Discount % LW", "bev %": "Beverage %",
-        "+/- bev % lw": "+/- Beverage % LW", "turn time": "Turn Time",
-        "+/- turn lw": "+/- Turn Time LW"
-    }, inplace=True)
+    display_df.columns = [
+        "Employee Name", "PPA", "+/- PPA LW", "Discount %", "+/- Discount % LW",
+        "Beverage %", "+/- Beverage % LW", "Turn Time", "+/- Turn Time LW"
+    ]
 
     display_df["PPA"] = display_df["PPA"].map("{:.2f}".format)
     display_df["Discount %"] = display_df["Discount %"].map("{:.2%}".format)
     display_df["Beverage %"] = display_df["Beverage %"].map("{:.2%}".format)
     display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
-    styles = display_df.style \
-        .applymap(ppa_bg, subset=["PPA"]) \
-        .applymap(disc_pct_bg, subset=["Discount %"]) \
-        .applymap(bev_pct_bg, subset=["Beverage %"]) \
-        .applymap(turn_time_bg, subset=["Turn Time"]) \
-        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW"]) \
-        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- Discount % LW", "+/- Turn Time LW"]) \
-        .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
-        .set_table_styles([
-            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
-            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
-        ], overwrite=False)
+    st.dataframe(display_df, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
-    st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
-    download_excel(display_df, location)
+    img_buffer = download_table_as_png(display_df, f"{location} – Performance Dashboard")
+    st.download_button(
+        label="📷 Download PNG",
+        data=img_buffer,
+        file_name=f"{location.replace(' ', '_')}_dashboard.png",
+        mime="image/png"
+    )
 
-# ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.27")
+# ---------- UI ---------- #
+st.title("📊 Server Performance Dashboard – v1.2.28")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     st.markdown("### 📄 Upload the file labeled: **Employee Sales Statistics**")
     this_week_file = st.file_uploader("", type="xlsx", key="tw_sales")
-    st.markdown("### 📄 Upload the file labeled: **Employee Sales Statistics** (Last Week)")
+    st.markdown("### 📄 Upload the file labeled: **Employee Sales Statistics (Last Week)**")
     last_week_file = st.file_uploader("", type="xlsx", key="lw_sales")
 
 if this_week_file and last_week_file:
