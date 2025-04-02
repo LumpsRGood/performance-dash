@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.5", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.6", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -75,6 +75,18 @@ def style_ppa(val):
     except:
         return ""
 
+def style_turn_time(val):
+    try:
+        v = float(val)
+        if v < 48:
+            return "background-color: lightgreen"
+        elif 48 <= v <= 52:
+            return "background-color: orange"
+        else:
+            return "background-color: salmon"
+    except:
+        return ""
+
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
@@ -104,16 +116,17 @@ def render_comparison_table(df, location):
     st.dataframe(
         display_df.style
             .applymap(style_deltas, subset=["+/- PPA LW"])
-            .applymap(style_ppa, subset=["PPA"]),
+            .applymap(style_ppa, subset=["PPA"])
+            .applymap(style_turn_time, subset=["Turn Time"]),
         use_container_width=True
     )
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.5")
+st.title("📊 Server Performance Dashboard – v1.2.6")
 
-st.subheader("Step 1: Upload Sales Files")
-this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
-last_week_file = st.file_uploader("Upload Last Week's Sales Data", type="xlsx", key="lw_sales")
+with st.expander("Step 1: Upload Sales Files", expanded=True):
+    this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
+    last_week_file = st.file_uploader("Upload Last Week's Sales Data", type="xlsx", key="lw_sales")
 
 if this_week_file and last_week_file:
     sales_tw = parse_sales(this_week_file)
