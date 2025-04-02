@@ -1,4 +1,4 @@
-import streamlit as st
+""import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import re
@@ -102,13 +102,18 @@ def render_comparison_table(df, location):
     display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
     styles = display_df.style \
-        .applymap(style_deltas_text, subset=["+/- PPA LW"]) \
+        .applymap(style_deltas_text, subset=["+/- PPA LW", "+/- Discount % LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
         .applymap(style_ppa_text, subset=["PPA"]) \
-        .set_properties(**{'text-align': 'center', 'font-weight': 'bold'}) \
+        .set_properties(**{
+            'text-align': 'center',
+            'vertical-align': 'middle',
+            'font-weight': 'bold',
+            'font-size': '14px'
+        }) \
         .set_table_styles([
-            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
+            {'selector': 'thead th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
             {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
-        ])
+        ], overwrite=False)
 
     st.dataframe(styles, use_container_width=True)
 
