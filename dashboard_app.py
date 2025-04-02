@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.9", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.10", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -52,28 +52,28 @@ def compute_deltas(curr, prev, is_pct=False):
 def style_deltas_text(val):
     try:
         if isinstance(val, str) and "NEW" in val:
-            return "color: gray; font-weight: bold"
+            return "color: gray; font-weight: bold; text-align: center"
         v = float(val.strip('%+'))
         if v > 0:
-            return "color: #66bb6a; font-weight: bold"
+            return "color: #66bb6a; font-weight: bold; text-align: center"
         elif v < 0:
-            return "color: #ef5350; font-weight: bold"
+            return "color: #ef5350; font-weight: bold; text-align: center"
         else:
-            return "color: gray; font-weight: bold"
+            return "color: gray; font-weight: bold; text-align: center"
     except:
-        return ""
+        return "text-align: center"
 
 def style_ppa_text(val):
     try:
         v = float(val)
         if v >= 15.5:
-            return "color: #66bb6a; font-weight: bold"
+            return "color: #66bb6a; font-weight: bold; text-align: center"
         elif 15.0 <= v < 15.5:
-            return "color: #ffa726; font-weight: bold"
+            return "color: #ffa726; font-weight: bold; text-align: center"
         else:
-            return "color: #ef5350; font-weight: bold"
+            return "color: #ef5350; font-weight: bold; text-align: center"
     except:
-        return ""
+        return "text-align: center"
 
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
@@ -105,13 +105,13 @@ def render_comparison_table(df, location):
         display_df.style
             .applymap(style_deltas_text, subset=["+/- PPA LW"])
             .applymap(style_ppa_text, subset=["PPA"])
-            .set_properties(**{'text-align': 'center'})
-            .set_table_styles([dict(selector='th', props=[('text-align', 'center')])]),
+            .set_properties(**{'text-align': 'center', 'font-weight': 'bold'})
+            .set_table_styles([dict(selector='th', props=[('text-align', 'center'), ('font-weight', 'bold')])]),
         use_container_width=True
     )
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.9")
+st.title("📊 Server Performance Dashboard – v1.2.10")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
