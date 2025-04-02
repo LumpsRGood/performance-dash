@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.2", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.3", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -93,20 +93,20 @@ def render_comparison_table(df, location):
     display_df = df[cols].copy()
 
     display_df.rename(columns={
-        "employee name": "Employee",
+        "employee name": "Employee Name",
         "ppa": "PPA",
         "+/- ppa lw": "+/- PPA LW",
-        "disc %": "Disc %",
-        "+/- disc % lw": "+/- Disc % LW",
-        "bev %": "Bev %",
-        "+/- bev % lw": "+/- Bev % LW",
+        "disc %": "Discount %",
+        "+/- disc % lw": "+/- Discount % LW",
+        "bev %": "Beverage %",
+        "+/- bev % lw": "+/- Beverage % LW",
         "turn time": "Turn Time",
         "+/- turn lw": "+/- Turn Time LW"
     }, inplace=True)
 
     display_df["PPA"] = display_df["PPA"].map("{:.2f}".format)
-    display_df["Disc %"] = display_df["Disc %"].map("{:.2%}".format)
-    display_df["Bev %"] = display_df["Bev %"].map("{:.2%}".format)
+    display_df["Discount %"] = display_df["Discount %"].map("{:.2%}".format)
+    display_df["Beverage %"] = display_df["Beverage %"].map("{:.2%}".format)
     display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
     st.dataframe(
@@ -117,6 +117,6 @@ def render_comparison_table(df, location):
     )
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.2")
+st.title("📊 Server Performance Dashboard – v1.2.3")
 
-# (Remaining UI unchanged)
+# You can now continue re-adding the uploader logic and table rendering
