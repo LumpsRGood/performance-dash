@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.20", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.21", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -40,11 +40,11 @@ def merge_data(sales_df, turn_df):
     merged = pd.merge(sales_df, turn_df.drop(columns=[col for col in turn_df.columns if col in sales_df.columns and col != "employee name"]), on="employee name", how="left")
     return merged
 
-def compute_deltas(curr, prev, is_pct=False):
+def compute_deltas(curr, prev, is_pct=False, inverse=False):
     try:
         curr = float(curr)
         prev = float(prev)
-        delta = curr - prev
+        delta = prev - curr if inverse else curr - prev
         if is_pct:
             return f"{prev:.2%} ({delta:+.2%})"
         else:
@@ -141,7 +141,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.20")
+st.title("📊 Server Performance Dashboard – v1.2.21")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
@@ -178,7 +178,7 @@ if this_week_file and last_week_file:
                         merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
 
                         merged_tw["+/- ppa lw"] = merged_tw.apply(lambda r: compute_deltas(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1)
-                        merged_tw["+/- disc % lw"] = merged_tw.apply(lambda r: compute_deltas(r["disc %"], merged_lw.loc[r.name, "disc %"], True), axis=1)
+                        merged_tw["+/- disc % lw"] = merged_tw.apply(lambda r: compute_deltas(r["disc %"], merged_lw.loc[r.name, "disc %"], True, inverse=True), axis=1)
                         merged_tw["+/- bev % lw"] = merged_tw.apply(lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"], True), axis=1)
                         merged_tw["+/- turn lw"] = merged_tw.apply(lambda r: compute_deltas(r["turn time"], merged_lw.loc[r.name, "turn time"]), axis=1)
 
