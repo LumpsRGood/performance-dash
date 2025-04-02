@@ -39,12 +39,16 @@ def merge_data(sales_df, turn_df):
         col for col in turn_df.columns if col in sales_df.columns and col != "employee name"
     ]), on="employee name", how="left")
 
-def compute_deltas(curr, prev, is_pct=False, inverse=False):
+def compute_deltas(curr, prev, show_previous=False, is_pct=False, inverse=False, thresholds=None):
     try:
         curr = float(curr)
         prev = float(prev)
         delta = prev - curr if inverse else curr - prev
-        return f"{prev:.2%} ({delta:+.2%})" if is_pct else f"{prev:.2f} ({delta:+.2f})"
+        val = f"{delta:+.2%}" if is_pct else f"{delta:+.2f}"
+        if show_previous:
+            base = f"{prev:.2%}" if is_pct else f"{prev:.2f}"
+            return f"{base} ({val})"
+        return val
     except:
         return "NEW"
 
@@ -54,9 +58,9 @@ def bg_color(val, pos_color, neutral_color, neg_color, thresholds=(0, 0)):
             return "background-color: #b0bec5; color: white; text-align: center; font-weight: bold"
         val = val.split("(")[-1].replace(")", "").replace("+", "").replace("%", "")
         v = float(val)
-        if v > thresholds[1]:
+        if v > thresholds[0]:
             return f"background-color: {pos_color}; color: white; text-align: center; font-weight: bold"
-        elif v < thresholds[0]:
+        elif v < thresholds[1]:
             return f"background-color: {neg_color}; color: white; text-align: center; font-weight: bold"
         else:
             return f"background-color: {neutral_color}; color: white; text-align: center; font-weight: bold"
@@ -108,12 +112,11 @@ def render_comparison_table(df, location):
     display_df = df[cols].copy()
 
     display_df.rename(columns={
-        "employee name": "Employee Name",
-        "ppa": "PPA",
-        "+/- ppa lw": "+/- PPA LW",
-        "disc %": "Discount %", "+/- disc % lw": "+/- Discount % LW",
-        "bev %": "Beverage %", "+/- bev % lw": "+/- Beverage % LW",
-        "turn time": "Turn Time", "+/- turn lw": "+/- Turn Time LW"
+        "employee name": "Employee Name", "ppa": "PPA",
+        "+/- ppa lw": "+/- PPA LW", "disc %": "Discount %",
+        "+/- disc % lw": "+/- Discount % LW", "bev %": "Beverage %",
+        "+/- bev % lw": "+/- Beverage % LW", "turn time": "Turn Time",
+        "+/- turn lw": "+/- Turn Time LW"
     }, inplace=True)
 
     display_df["PPA"] = display_df["PPA"].map("{:.2f}".format)
@@ -174,9 +177,25 @@ if this_week_file and last_week_file:
                         merged_tw = merge_data(sales_tw[sales_tw["location key"] == loc], tw_df)
                         merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
 
-                        merged_tw["+/- ppa lw"] = merged_tw.apply(lambda r: compute_deltas(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1)
-                        merged_tw["+/- disc % lw"] = merged_tw.apply(lambda r: compute_deltas(r["disc %"], merged_lw.loc[r.name, "disc %"], True, inverse=True), axis=1)
-                        merged_tw["+/- bev % lw"] = merged_tw.apply(lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"], True), axis=1)
-                        merged_tw["+/- turn lw"] = merged_tw.apply(lambda r: compute_deltas(r["turn time"], merged_lw.loc[r.name, "turn time"]), axis=1)
+                        merged_tw["+/- ppa lw"] = merged_tw.apply(
+                            lambda r: compute_deltas(r["ppa"], merged_lw.loc[r.name, "ppa"],
+                                show_previous=True, is_pct=False, inverse=False),
+                            axis=1
+                        )
+                        merged_tw["+/- disc % lw"] = merged_tw.apply(
+                            lambda r: compute_deltas(r["disc %"], merged_lw.loc[r.name, "disc %"],
+                                show_previous=True, is_pct=True, inverse=True),
+                            axis=1
+                        )
+                        merged_tw["+/- bev % lw"] = merged_tw.apply(
+                            lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"],
+                                show_previous=True, is_pct=True, inverse=False),
+                            axis=1
+                        )
+                        merged_tw["+/- turn lw"] = merged_tw.apply(
+                            lambda r: compute_deltas(r["turn time"], merged_lw.loc[r.name, "turn time"],
+                                show_previous=True, is_pct=False, inverse=True),
+                            axis=1
+                        )
 
                         render_comparison_table(merged_tw, loc)
