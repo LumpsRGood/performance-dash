@@ -55,9 +55,9 @@ def style_deltas_text(val):
             return "color: gray; font-weight: bold; text-align: center"
         v = float(val.strip('%+'))
         if v > 0:
-            return "color: #388e3c; font-weight: bold; text-align: center"
+            return "color: #2e7d32; font-weight: bold; text-align: center"
         elif v < 0:
-            return "color: #d32f2f; font-weight: bold; text-align: center"
+            return "color: #c62828; font-weight: bold; text-align: center"
         else:
             return "color: gray; font-weight: bold; text-align: center"
     except:
@@ -67,11 +67,11 @@ def style_ppa_text(val):
     try:
         v = float(val)
         if v >= 15.5:
-            return "color: #388e3c; font-weight: bold; text-align: center"
+            return "color: #2e7d32; font-weight: bold; text-align: center"
         elif 15.0 <= v < 15.5:
             return "color: #fbc02d; font-weight: bold; text-align: center"
         else:
-            return "color: #d32f2f; font-weight: bold; text-align: center"
+            return "color: #c62828; font-weight: bold; text-align: center"
     except:
         return "text-align: center; font-weight: bold"
 
@@ -101,7 +101,7 @@ def render_comparison_table(df, location):
     display_df["Beverage %"] = display_df["Beverage %"].map("{:.2%}".format)
     display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
-    styled = display_df.style \
+    styles = display_df.style \
         .applymap(style_deltas_text, subset=["+/- PPA LW"]) \
         .applymap(style_ppa_text, subset=["PPA"]) \
         .set_properties(**{'text-align': 'center', 'font-weight': 'bold'}) \
@@ -110,7 +110,7 @@ def render_comparison_table(df, location):
             {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
         ])
 
-    st.dataframe(styled, use_container_width=True)
+    st.dataframe(styles, use_container_width=True)
 
 # ---------- Streamlit UI ---------- #
 st.title("📊 Server Performance Dashboard – v1.2.16")
