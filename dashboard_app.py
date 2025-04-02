@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.6", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.7", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -52,14 +52,14 @@ def compute_deltas(curr, prev, is_pct=False):
 def style_deltas(val):
     try:
         if isinstance(val, str) and "NEW" in val:
-            return "background-color: lightgray"
+            return "background-color: lightgray; font-weight: bold"
         v = float(val.strip('%+'))
         if v > 0:
-            return "background-color: lightgreen"
+            return "background-color: #a3f7b5; font-weight: bold"
         elif v < 0:
-            return "background-color: salmon"
+            return "background-color: #f7a3a3; font-weight: bold"
         else:
-            return "background-color: lightgray"
+            return "background-color: lightgray; font-weight: bold"
     except:
         return ""
 
@@ -67,23 +67,11 @@ def style_ppa(val):
     try:
         v = float(val)
         if v >= 15.5:
-            return "background-color: lightgreen"
+            return "background-color: #a3f7b5; font-weight: bold"
         elif 15.0 <= v < 15.5:
-            return "background-color: orange"
+            return "background-color: #ffd580; font-weight: bold"
         else:
-            return "background-color: salmon"
-    except:
-        return ""
-
-def style_turn_time(val):
-    try:
-        v = float(val)
-        if v < 48:
-            return "background-color: lightgreen"
-        elif 48 <= v <= 52:
-            return "background-color: orange"
-        else:
-            return "background-color: salmon"
+            return "background-color: #f7a3a3; font-weight: bold"
     except:
         return ""
 
@@ -116,13 +104,12 @@ def render_comparison_table(df, location):
     st.dataframe(
         display_df.style
             .applymap(style_deltas, subset=["+/- PPA LW"])
-            .applymap(style_ppa, subset=["PPA"])
-            .applymap(style_turn_time, subset=["Turn Time"]),
+            .applymap(style_ppa, subset=["PPA"]),
         use_container_width=True
     )
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.6")
+st.title("📊 Server Performance Dashboard – v1.2.7")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
