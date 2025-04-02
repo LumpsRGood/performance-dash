@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.1.9", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.0", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -33,8 +33,9 @@ def parse_turn(file):
         if "employee name" not in df.columns:
             st.error("❌ 'Employee Name' column missing in Turn Time file.")
             return pd.DataFrame()
-        if "avg mins" in df.columns:
-            df.rename(columns={"avg mins": "turn time"}, inplace=True)
+        for col in df.columns:
+            if col.strip().lower() == "avg mins":
+                df.rename(columns={col: "turn time"}, inplace=True)
         return df
     except Exception as e:
         st.error(f"Error reading turn file: {e}")
@@ -69,12 +70,12 @@ def render_comparison_table(df, location):
     display_df["ppa"] = display_df["ppa"].map("{:.2f}".format)
     display_df["disc %"] = display_df["disc %"].map("{:.2%}".format)
     display_df["bev %"] = display_df["bev %"].map("{:.2%}".format)
-    display_df["turn time"] = display_df["turn time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "")
+    display_df["turn time"] = display_df["turn time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
     st.dataframe(display_df, use_container_width=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.1.9")
+st.title("📊 Server Performance Dashboard – v1.2.0")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
