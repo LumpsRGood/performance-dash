@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.23", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.24", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -39,33 +39,19 @@ def merge_data(sales_df, turn_df):
         col for col in turn_df.columns if col in sales_df.columns and col != "employee name"
     ]), on="employee name", how="left")
 
-def compute_deltas(curr, prev, show_previous=False, is_pct=False, inverse=False, thresholds=None):
+def describe_change(curr, prev, is_pct=False):
     try:
         curr = float(curr)
         prev = float(prev)
-        delta = prev - curr if inverse else curr - prev
-        val = f"{delta:+.2%}" if is_pct else f"{delta:+.2f}"
-        if show_previous:
-            base = f"{prev:.2%}" if is_pct else f"{prev:.2f}"
-            return f"{base} ({val})"
-        return val
+        diff = curr - prev
+        if diff > 0:
+            return f"Improved by {abs(diff):.2%}" if is_pct else f"Improved by {abs(diff):.2f}"
+        elif diff < 0:
+            return f"Declined by {abs(diff):.2%}" if is_pct else f"Declined by {abs(diff):.2f}"
+        else:
+            return "No Change"
     except:
         return "NEW"
-
-def bg_color(val, pos_color, neutral_color, neg_color, thresholds=(0, 0)):
-    try:
-        if isinstance(val, str) and "NEW" in val:
-            return "background-color: #b0bec5; color: white; text-align: center; font-weight: bold"
-        val = val.split("(")[-1].replace(")", "").replace("+", "").replace("%", "")
-        v = float(val)
-        if v > thresholds[0]:
-            return f"background-color: {pos_color}; color: white; text-align: center; font-weight: bold"
-        elif v < thresholds[1]:
-            return f"background-color: {neg_color}; color: white; text-align: center; font-weight: bold"
-        else:
-            return f"background-color: {neutral_color}; color: white; text-align: center; font-weight: bold"
-    except:
-        return "text-align: center; font-weight: bold"
 
 def ppa_bg(val):
     try:
@@ -126,10 +112,6 @@ def render_comparison_table(df, location):
 
     styles = display_df.style \
         .applymap(ppa_bg, subset=["PPA"]) \
-        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c"), subset=["+/- PPA LW"]) \
-        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c"), subset=["+/- Discount % LW"]) \
-        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c"), subset=["+/- Beverage % LW"]) \
-        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c"), subset=["+/- Turn Time LW"]) \
         .applymap(disc_pct_bg, subset=["Discount %"]) \
         .applymap(bev_pct_bg, subset=["Beverage %"]) \
         .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
@@ -141,7 +123,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.23")
+st.title("📊 Server Performance Dashboard – v1.2.24")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
@@ -178,24 +160,16 @@ if this_week_file and last_week_file:
                         merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
 
                         merged_tw["+/- ppa lw"] = merged_tw.apply(
-                            lambda r: compute_deltas(r["ppa"], merged_lw.loc[r.name, "ppa"],
-                                show_previous=True, is_pct=False, inverse=False),
-                            axis=1
+                            lambda r: describe_change(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1
                         )
                         merged_tw["+/- disc % lw"] = merged_tw.apply(
-                            lambda r: compute_deltas(r["disc %"], merged_lw.loc[r.name, "disc %"],
-                                show_previous=True, is_pct=True, inverse=True),
-                            axis=1
+                            lambda r: describe_change(merged_lw.loc[r.name, "disc %"], r["disc %"], is_pct=True), axis=1
                         )
                         merged_tw["+/- bev % lw"] = merged_tw.apply(
-                            lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"],
-                                show_previous=True, is_pct=True, inverse=False),
-                            axis=1
+                            lambda r: describe_change(r["bev %"], merged_lw.loc[r.name, "bev %"], is_pct=True), axis=1
                         )
                         merged_tw["+/- turn lw"] = merged_tw.apply(
-                            lambda r: compute_deltas(r["turn time"], merged_lw.loc[r.name, "turn time"],
-                                show_previous=True, is_pct=False, inverse=True),
-                            axis=1
+                            lambda r: describe_change(merged_lw.loc[r.name, "turn time"], r["turn time"]), axis=1
                         )
 
                         render_comparison_table(merged_tw, loc)
