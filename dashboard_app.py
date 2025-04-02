@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.4", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.5", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -109,11 +109,11 @@ def render_comparison_table(df, location):
     )
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.4")
+st.title("📊 Server Performance Dashboard – v1.2.5")
 
-with st.expander("Step 1: Upload Sales Files"):
-    this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
-    last_week_file = st.file_uploader("Upload Last Week's Sales Data", type="xlsx", key="lw_sales")
+st.subheader("Step 1: Upload Sales Files")
+this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
+last_week_file = st.file_uploader("Upload Last Week's Sales Data", type="xlsx", key="lw_sales")
 
 if this_week_file and last_week_file:
     sales_tw = parse_sales(this_week_file)
