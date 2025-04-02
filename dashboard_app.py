@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.19", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.20", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -45,7 +45,10 @@ def compute_deltas(curr, prev, is_pct=False):
         curr = float(curr)
         prev = float(prev)
         delta = curr - prev
-        return f"{delta:+.2%}" if is_pct else f"{delta:+.2f}"
+        if is_pct:
+            return f"{prev:.2%} ({delta:+.2%})"
+        else:
+            return f"{prev:.2f} ({delta:+.2f})"
     except:
         return "NEW"
 
@@ -53,7 +56,8 @@ def bg_color(val, pos_color, neutral_color, neg_color, thresholds=(0, 0)):
     try:
         if isinstance(val, str) and "NEW" in val:
             return "background-color: #b0bec5; color: white; text-align: center; font-weight: bold"
-        v = float(val.strip('%+'))
+        val = val.split("(")[-1].replace(")", "").replace("+", "").replace("%", "")
+        v = float(val)
         if v > thresholds[1]:
             return f"background-color: {pos_color}; color: white; text-align: center; font-weight: bold"
         elif v < thresholds[0]:
@@ -137,7 +141,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.19")
+st.title("📊 Server Performance Dashboard – v1.2.20")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
