@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.0", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.1", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -57,6 +57,32 @@ def compute_deltas(curr, prev, is_pct=False):
     except:
         return "NEW"
 
+def style_deltas(val):
+    try:
+        if isinstance(val, str) and "NEW" in val:
+            return "color: gray"
+        v = float(val.strip('%+'))
+        if v > 0:
+            return "color: green"
+        elif v < 0:
+            return "color: red"
+        else:
+            return "color: black"
+    except:
+        return ""
+
+def style_ppa(val):
+    try:
+        v = float(val)
+        if v >= 15.5:
+            return "color: green"
+        elif 15.0 <= v < 15.5:
+            return "color: orange"
+        else:
+            return "color: red"
+    except:
+        return ""
+
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
@@ -66,16 +92,32 @@ def render_comparison_table(df, location):
 
     display_df = df[cols].copy()
 
-    # Format columns for readability
-    display_df["ppa"] = display_df["ppa"].map("{:.2f}".format)
-    display_df["disc %"] = display_df["disc %"].map("{:.2%}".format)
-    display_df["bev %"] = display_df["bev %"].map("{:.2%}".format)
-    display_df["turn time"] = display_df["turn time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
+    display_df.rename(columns={
+        "employee name": "Employee",
+        "ppa": "PPA",
+        "+/- ppa lw": "Δ PPA",
+        "disc %": "Disc %",
+        "+/- disc % lw": "Δ Disc %",
+        "bev %": "Bev %",
+        "+/- bev % lw": "Δ Bev %",
+        "turn time": "Turn Time",
+        "+/- turn lw": "Δ Turn Time"
+    }, inplace=True)
 
-    st.dataframe(display_df, use_container_width=True)
+    display_df["PPA"] = display_df["PPA"].map("{:.2f}".format)
+    display_df["Disc %"] = display_df["Disc %"].map("{:.2%}".format)
+    display_df["Bev %"] = display_df["Bev %"].map("{:.2%}".format)
+    display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
+
+    st.dataframe(
+        display_df.style
+            .applymap(style_deltas, subset=["Δ PPA"])
+            .applymap(style_ppa, subset=["PPA"]),
+        use_container_width=True
+    )
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.0")
+st.title("📊 Server Performance Dashboard – v1.2.1")
 
 st.header("Step 1: Upload Sales Data")
 tw_file = st.file_uploader("Upload This Week's Sales Data", type=["xlsx"], key="tw_sales")
