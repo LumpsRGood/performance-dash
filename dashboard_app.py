@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.22", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.23", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -94,6 +94,21 @@ def disc_pct_bg(val):
     except:
         return "text-align: center; font-weight: bold"
 
+def bev_pct_bg(val):
+    try:
+        if isinstance(val, str):
+            v = float(val.strip('%'))
+        else:
+            v = float(val)
+        if v >= 18.5:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        elif 18.0 <= v < 18.5:
+            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
+    except:
+        return "text-align: center; font-weight: bold"
+
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
@@ -127,6 +142,7 @@ def render_comparison_table(df, location):
         .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- Beverage % LW"]) \
         .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- Turn Time LW"]) \
         .applymap(disc_pct_bg, subset=["Discount %"]) \
+        .applymap(bev_pct_bg, subset=["Beverage %"]) \
         .set_properties(**{
             'text-align': 'center',
             'vertical-align': 'middle',
@@ -141,7 +157,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.22")
+st.title("📊 Server Performance Dashboard – v1.2.23")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
@@ -179,7 +195,7 @@ if this_week_file and last_week_file:
 
                         merged_tw["+/- ppa lw"] = merged_tw.apply(lambda r: compute_deltas(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1)
                         merged_tw["+/- disc % lw"] = merged_tw.apply(lambda r: compute_deltas(r["disc %"], merged_lw.loc[r.name, "disc %"], True, inverse=True), axis=1)
-                        merged_tw["+/- bev % lw"] = merged_tw.apply(lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"], True), axis=1)
+                        merged_tw["+/- bev % lw"] = merged_tw.apply(lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"], True, inverse=True), axis=1)
                         merged_tw["+/- turn lw"] = merged_tw.apply(lambda r: compute_deltas(r["turn time"], merged_lw.loc[r.name, "turn time"]), axis=1)
 
                         render_comparison_table(merged_tw, loc)
