@@ -5,9 +5,12 @@ import re
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.28", layout="wide")
+# ---------- Streamlit Config ---------- #
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.29", layout="wide")
 
 # ---------- Utility Functions ---------- #
+REQUIRED_COLUMNS = ["employee name", "ppa", "disc %", "bev %", "turn time"]
+
 def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)
@@ -25,6 +28,7 @@ def parse_turn(file):
     try:
         df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip().str.lower()
+        # Normalize "avg mins" to "turn time"
         for col in df.columns:
             if col.strip().lower() == "avg mins":
                 df.rename(columns={col: "turn time"}, inplace=True)
@@ -35,7 +39,7 @@ def parse_turn(file):
 
 def merge_data(sales_df, turn_df):
     if "employee name" not in sales_df.columns or "employee name" not in turn_df.columns:
-        st.error("❌ 'Employee Name' column is missing from one of the files.")
+        st.error("❌ 'Employee Name' column missing from one of the files.")
         return pd.DataFrame()
     return pd.merge(sales_df, turn_df.drop(columns=[
         col for col in turn_df.columns if col in sales_df.columns and col != "employee name"
@@ -56,59 +60,57 @@ def describe_change(curr, prev, is_pct=False):
         return "NEW"
 
 def style_lw_change(val, inverse=False):
-    try:
-        if isinstance(val, str):
-            if "No Change" in val:
-                return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
-            elif "Improved" in val:
-                return (
-                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
-                    if not inverse else
-                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
-                )
-            elif "Declined" in val:
-                return (
-                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
-                    if not inverse else
-                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
-                )
+    if not isinstance(val, str):
         return "text-align: center"
-    except:
-        return "text-align: center"
+    if "No Change" in val:
+        return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
+    elif "Improved" in val:
+        return (
+            "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+            if not inverse else
+            "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+        )
+    elif "Declined" in val:
+        return (
+            "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+            if not inverse else
+            "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+        )
+    return "text-align: center"
 
 def ppa_bg(val):
     try:
         v = float(val)
         if v >= 15.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+            return "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
         elif 15.0 <= v < 15.5:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+            return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
         else:
-            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+            return "background-color: #b71c1c; color: white; font-weight: bold; text-align: center"
     except:
         return "text-align: center; font-weight: bold"
 
 def disc_pct_bg(val):
     try:
-        v = float(val.strip('%')) if isinstance(val, str) else float(val)
+        v = float(str(val).strip('%'))
         if v < 1.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 1.5 <= v < 2.0:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+            return "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+        elif v < 2.0:
+            return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
         else:
-            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
+            return "background-color: #c62828; color: white; font-weight: bold; text-align: center"
     except:
         return "text-align: center; font-weight: bold"
 
 def bev_pct_bg(val):
     try:
-        v = float(val.strip('%')) if isinstance(val, str) else float(val)
+        v = float(str(val).strip('%'))
         if v >= 18.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 18.0 <= v < 18.5:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+            return "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+        elif v >= 18.0:
+            return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
         else:
-            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
+            return "background-color: #c62828; color: white; font-weight: bold; text-align: center"
     except:
         return "text-align: center; font-weight: bold"
 
@@ -116,21 +118,27 @@ def turn_time_bg(val):
     try:
         v = float(val)
         if v <= 35:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 36 <= v <= 39:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+            return "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+        elif v <= 39:
+            return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
         else:
-            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+            return "background-color: #b71c1c; color: white; font-weight: bold; text-align: center"
     except:
-        return "text-align: center"
+        return "text-align: center; font-weight: bold"
+
+def has_required_columns(df, required_cols):
+    missing = [col for col in required_cols if col not in df.columns]
+    return missing
 
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
 
-    cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
-            "bev %", "+/- bev % lw", "turn time", "+/- turn lw"]
-    display_df = df[cols].copy()
+    display_df = df[[
+        "employee name", "ppa", "+/- ppa lw",
+        "disc %", "+/- disc % lw", "bev %", "+/- bev % lw",
+        "turn time", "+/- turn lw"
+    ]].copy()
 
     display_df.rename(columns={
         "employee name": "Employee Name", "ppa": "PPA",
@@ -152,16 +160,15 @@ def render_comparison_table(df, location):
         .applymap(turn_time_bg, subset=["Turn Time"]) \
         .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW"]) \
         .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW", "+/- Turn Time LW"]) \
-        .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
+        .set_properties(**{"text-align": "center", "font-weight": "bold"}) \
         .set_table_styles([
-            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
-            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
+            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
         ], overwrite=False)
 
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.28")
+st.title("📊 Server Performance Dashboard – v1.2.29")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
@@ -192,24 +199,31 @@ if this_week_file and last_week_file:
             for loc in locations:
                 tw_file = turn_data[loc]["this_week"]
                 lw_file = turn_data[loc]["last_week"]
-                if tw_file and lw_file:
-                    tw_df = parse_turn(tw_file)
-                    lw_df = parse_turn(lw_file)
-                    if not tw_df.empty and not lw_df.empty:
-                        merged_tw = merge_data(sales_tw[sales_tw["location key"] == loc], tw_df)
-                        merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
+                if not tw_file or not lw_file:
+                    st.warning(f"⏭ Skipping {loc}: missing one or both turn time files.")
+                    continue
 
-                        merged_tw["+/- ppa lw"] = merged_tw.apply(
-                            lambda r: describe_change(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1
-                        )
-                        merged_tw["+/- disc % lw"] = merged_tw.apply(
-                            lambda r: describe_change(merged_lw.loc[r.name, "disc %"], r["disc %"], is_pct=True), axis=1
-                        )
-                        merged_tw["+/- bev % lw"] = merged_tw.apply(
-                            lambda r: describe_change(r["bev %"], merged_lw.loc[r.name, "bev %"], is_pct=True), axis=1
-                        )
-                        merged_tw["+/- turn lw"] = merged_tw.apply(
-                            lambda r: describe_change(merged_lw.loc[r.name, "turn time"], r["turn time"]), axis=1
-                        )
+                tw_df = parse_turn(tw_file)
+                lw_df = parse_turn(lw_file)
 
-                        render_comparison_table(merged_tw, loc)
+                missing_tw = has_required_columns(tw_df, ["employee name", "turn time"])
+                missing_lw = has_required_columns(lw_df, ["employee name", "turn time"])
+
+                if missing_tw or missing_lw:
+                    st.warning(f"⏭ Skipping {loc}: Turn data missing columns: {missing_tw + missing_lw}")
+                    continue
+
+                merged_tw = merge_data(sales_tw[sales_tw["location key"] == loc], tw_df)
+                merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
+
+                missing_metrics = has_required_columns(merged_tw, REQUIRED_COLUMNS) + has_required_columns(merged_lw, REQUIRED_COLUMNS)
+                if missing_metrics:
+                    st.warning(f"⏭ Skipping {loc}: Missing required metrics columns: {missing_metrics}")
+                    continue
+
+                merged_tw["+/- ppa lw"] = merged_tw.apply(lambda r: describe_change(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1)
+                merged_tw["+/- disc % lw"] = merged_tw.apply(lambda r: describe_change(merged_lw.loc[r.name, "disc %"], r["disc %"], is_pct=True), axis=1)
+                merged_tw["+/- bev % lw"] = merged_tw.apply(lambda r: describe_change(r["bev %"], merged_lw.loc[r.name, "bev %"], is_pct=True), axis=1)
+                merged_tw["+/- turn lw"] = merged_tw.apply(lambda r: describe_change(merged_lw.loc[r.name, "turn time"], r["turn time"]), axis=1)
+
+                render_comparison_table(merged_tw, loc)
