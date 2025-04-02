@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.24", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.25", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -52,6 +52,27 @@ def describe_change(curr, prev, is_pct=False):
             return "No Change"
     except:
         return "NEW"
+
+def style_lw_change(val, inverse=False):
+    try:
+        if isinstance(val, str):
+            if "No Change" in val:
+                return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
+            elif "Improved" in val:
+                return (
+                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                    if not inverse else
+                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                )
+            elif "Declined" in val:
+                return (
+                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                    if not inverse else
+                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                )
+        return "text-align: center"
+    except:
+        return "text-align: center"
 
 def ppa_bg(val):
     try:
@@ -114,6 +135,8 @@ def render_comparison_table(df, location):
         .applymap(ppa_bg, subset=["PPA"]) \
         .applymap(disc_pct_bg, subset=["Discount %"]) \
         .applymap(bev_pct_bg, subset=["Beverage %"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW", "+/- Turn Time LW"]) \
         .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
@@ -123,7 +146,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True)
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.24")
+st.title("📊 Server Performance Dashboard – v1.2.25")
 
 with st.expander("Step 1: Upload Sales Files", expanded=True):
     this_week_file = st.file_uploader("Upload This Week's Sales Data", type="xlsx", key="tw_sales")
