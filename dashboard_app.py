@@ -177,10 +177,10 @@ def render_comparison_table(df, location):
 # ---------- Streamlit UI ---------- #
 st.title("📊 Server Performance Dashboard – v1.2.27")
 
-with st.expander("Step 1: Upload Sales Files", expanded=True):
-    st.markdown("### 📄 Upload the file labeled: **Employee Sales Statistics**")
+with st.expander("", expanded=True):
+    st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
     this_week_file = st.file_uploader("", type="xlsx", key="tw_sales")
-    st.markdown("### 📄 Upload the file labeled: **Employee Sales Statistics** (Last Week)")
+    st.markdown("### 📄 Upload last week's **Employee Sales Statistics**")
     last_week_file = st.file_uploader("", type="xlsx", key="lw_sales")
 
 if this_week_file and last_week_file:
