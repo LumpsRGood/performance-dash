@@ -104,14 +104,15 @@ def render_comparison_table(df, location):
     styles = display_df.style \
         .applymap(style_deltas_text, subset=["+/- PPA LW", "+/- Discount % LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
         .applymap(style_ppa_text, subset=["PPA"]) \
-        .set_properties(subset=display_df.columns, **{
+        .set_properties(**{
             'text-align': 'center',
+            'vertical-align': 'middle',
             'font-weight': 'bold',
             'font-size': '14px'
         }) \
         .set_table_styles([
-            {'selector': 'thead th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
-            {'selector': 'tbody td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
+            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
+            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
         ], overwrite=False)
 
     st.dataframe(styles, use_container_width=True)
