@@ -10,11 +10,9 @@ def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)
         df.columns = df.columns.str.strip().str.lower()
-
         df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
         df = df[df["employee name"].notna() & df["location"].notna()]
         df["location key"] = df["location"].astype(str).str.strip()
-
         st.caption("Sales Data Columns: " + ", ".join(df.columns))
         return df
     except Exception as e:
@@ -37,18 +35,16 @@ def merge_data(sales_df, turn_df):
     if "employee name" not in sales_df.columns or "employee name" not in turn_df.columns:
         st.error("❌ 'Employee Name' column is missing from one of the files.")
         return pd.DataFrame()
-    merged = pd.merge(sales_df, turn_df.drop(columns=[col for col in turn_df.columns if col in sales_df.columns and col != "employee name"]), on="employee name", how="left")
-    return merged
+    return pd.merge(sales_df, turn_df.drop(columns=[
+        col for col in turn_df.columns if col in sales_df.columns and col != "employee name"
+    ]), on="employee name", how="left")
 
 def compute_deltas(curr, prev, is_pct=False, inverse=False):
     try:
         curr = float(curr)
         prev = float(prev)
         delta = prev - curr if inverse else curr - prev
-        if is_pct:
-            return f"{prev:.2%} ({delta:+.2%})"
-        else:
-            return f"{prev:.2f} ({delta:+.2f})"
+        return f"{prev:.2%} ({delta:+.2%})" if is_pct else f"{prev:.2f} ({delta:+.2f})"
     except:
         return "NEW"
 
@@ -81,10 +77,7 @@ def ppa_bg(val):
 
 def disc_pct_bg(val):
     try:
-        if isinstance(val, str):
-            v = float(val.strip('%'))
-        else:
-            v = float(val)
+        v = float(val.strip('%')) if isinstance(val, str) else float(val)
         if v < 1.5:
             return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
         elif 1.5 <= v < 2.0:
@@ -96,10 +89,7 @@ def disc_pct_bg(val):
 
 def bev_pct_bg(val):
     try:
-        if isinstance(val, str):
-            v = float(val.strip('%'))
-        else:
-            v = float(val)
+        v = float(val.strip('%')) if isinstance(val, str) else float(val)
         if v >= 18.5:
             return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
         elif 18.0 <= v < 18.5:
@@ -115,19 +105,15 @@ def render_comparison_table(df, location):
 
     cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
             "bev %", "+/- bev % lw", "turn time", "+/- turn lw"]
-
     display_df = df[cols].copy()
 
     display_df.rename(columns={
         "employee name": "Employee Name",
         "ppa": "PPA",
         "+/- ppa lw": "+/- PPA LW",
-        "disc %": "Discount %",
-        "+/- disc % lw": "+/- Discount % LW",
-        "bev %": "Beverage %",
-        "+/- bev % lw": "+/- Beverage % LW",
-        "turn time": "Turn Time",
-        "+/- turn lw": "+/- Turn Time LW"
+        "disc %": "Discount %", "+/- disc % lw": "+/- Discount % LW",
+        "bev %": "Beverage %", "+/- bev % lw": "+/- Beverage % LW",
+        "turn time": "Turn Time", "+/- turn lw": "+/- Turn Time LW"
     }, inplace=True)
 
     display_df["PPA"] = display_df["PPA"].map("{:.2f}".format)
@@ -137,21 +123,16 @@ def render_comparison_table(df, location):
 
     styles = display_df.style \
         .applymap(ppa_bg, subset=["PPA"]) \
-        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- PPA LW"]) \
-        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- Discount % LW"]) \
-        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- Beverage % LW"]) \
-        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c", thresholds=(0, 0)), subset=["+/- Turn Time LW"]) \
+        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c"), subset=["+/- PPA LW"]) \
+        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c"), subset=["+/- Discount % LW"]) \
+        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c"), subset=["+/- Beverage % LW"]) \
+        .applymap(lambda v: bg_color(v, "#1b5e20", "#f9a825", "#b71c1c"), subset=["+/- Turn Time LW"]) \
         .applymap(disc_pct_bg, subset=["Discount %"]) \
         .applymap(bev_pct_bg, subset=["Beverage %"]) \
-        .set_properties(**{
-            'text-align': 'center',
-            'vertical-align': 'middle',
-            'font-weight': 'bold',
-            'font-size': '14px'
-        }) \
+        .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
-            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
+            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
         ], overwrite=False)
 
     st.dataframe(styles, use_container_width=True, hide_index=True)
@@ -195,7 +176,7 @@ if this_week_file and last_week_file:
 
                         merged_tw["+/- ppa lw"] = merged_tw.apply(lambda r: compute_deltas(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1)
                         merged_tw["+/- disc % lw"] = merged_tw.apply(lambda r: compute_deltas(r["disc %"], merged_lw.loc[r.name, "disc %"], True, inverse=True), axis=1)
-                        merged_tw["+/- bev % lw"] = merged_tw.apply(lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"], True, inverse=True), axis=1)
+                        merged_tw["+/- bev % lw"] = merged_tw.apply(lambda r: compute_deltas(r["bev %"], merged_lw.loc[r.name, "bev %"], True), axis=1)
                         merged_tw["+/- turn lw"] = merged_tw.apply(lambda r: compute_deltas(r["turn time"], merged_lw.loc[r.name, "turn time"]), axis=1)
 
                         render_comparison_table(merged_tw, loc)
