@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import re
 from datetime import datetime
 
 st.set_page_config(page_title="Server Performance Dashboard - v1.2.34", layout="wide")
@@ -13,8 +11,8 @@ def parse_sales(file):
         df.columns = df.columns.str.strip().str.lower()
         df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
         df = df[df["employee name"].notna() & df["location"].notna()]
-        df["location key"] = df["location"].astype(str).str.strip()
         df = df[df["employee name"].str.upper().str.strip() != "STAFF, OLO"]
+        df["location key"] = df["location"].astype(str).str.strip()
         return df
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
@@ -57,7 +55,7 @@ def describe_change(curr, prev, is_pct=False):
 def style_lw_change(val, inverse=False):
     try:
         if isinstance(val, str):
-            if "No Change" in val:
+            if "NEW" in val:
                 return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
             elif "Improved" in val:
                 return (
@@ -80,10 +78,8 @@ def ppa_bg(val):
         v = float(val)
         if v >= 15.5:
             return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 15.0 <= v < 15.5:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
         else:
-            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
         return "text-align: center; font-weight: bold"
 
@@ -92,8 +88,6 @@ def disc_pct_bg(val):
         v = float(val.strip('%')) if isinstance(val, str) else float(val)
         if v < 1.5:
             return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 1.5 <= v < 2.0:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
         else:
             return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
@@ -104,8 +98,6 @@ def bev_pct_bg(val):
         v = float(val.strip('%')) if isinstance(val, str) else float(val)
         if v >= 18.5:
             return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 18.0 <= v < 18.5:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
         else:
             return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
@@ -116,10 +108,8 @@ def turn_time_bg(val):
         v = float(val)
         if v <= 35:
             return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
-        elif 36 <= v <= 39:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
         else:
-            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
         return "text-align: center"
 
@@ -198,26 +188,19 @@ if this_week_file and last_week_file:
                         merged_tw = merge_data(sales_tw[sales_tw["location key"] == loc], tw_df)
                         merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
 
-                        if merged_tw.empty or merged_lw.empty:
-                            st.warning(f"⚠️ Skipping {loc} due to missing merged data")
-                            continue
-
-                        lw_indexed = merged_lw.set_index("employee name")
+                        lw_index = merged_lw.set_index("employee name")
 
                         merged_tw["+/- ppa lw"] = merged_tw.apply(
-                            lambda r: describe_change(r["ppa"], lw_indexed["ppa"].get(r["employee name"], None)), axis=1
+                            lambda r: describe_change(r["ppa"], lw_index["ppa"].get(r["employee name"], None)), axis=1
                         )
-
                         merged_tw["+/- disc % lw"] = merged_tw.apply(
-                            lambda r: describe_change(lw_indexed["disc %"].get(r["employee name"], None), r["disc %"], is_pct=True), axis=1
+                            lambda r: describe_change(lw_index["disc %"].get(r["employee name"], None), r["disc %"], is_pct=True), axis=1
                         )
-
                         merged_tw["+/- bev % lw"] = merged_tw.apply(
-                            lambda r: describe_change(r["bev %"], lw_indexed["bev %"].get(r["employee name"], None), is_pct=True), axis=1
+                            lambda r: describe_change(r["bev %"], lw_index["bev %"].get(r["employee name"], None), is_pct=True), axis=1
                         )
-
                         merged_tw["+/- turn lw"] = merged_tw.apply(
-                            lambda r: describe_change(lw_indexed["turn time"].get(r["employee name"], None), r["turn time"]), axis=1
+                            lambda r: describe_change(lw_index["turn time"].get(r["employee name"], None), r["turn time"]), axis=1
                         )
 
                         render_comparison_table(merged_tw, loc)
