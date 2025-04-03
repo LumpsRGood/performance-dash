@@ -1,76 +1,8 @@
 import streamlit as st
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 import pandas as pd
 from datetime import datetime
 
-import re
-from datetime import datetime
-from openpyxl import load_workbook
-
-st.title("📊 Weekly Performance Dashboard")
-
-uploaded_files = st.file_uploader(
-    "Upload Sales + Turn Excel Files",
-    type=["xlsx"],
-    accept_multiple_files=True
-)
-
-def get_header_title(file):
-    try:
-        wb = load_workbook(file, read_only=True, data_only=True)
-        ws = wb.active
-        return ws["A1"].value
-    except Exception as e:
-        st.warning(f"⚠️ Could not read A1 in file: {file.name} ({e})")
-        return ""
-
-def extract_dates(text):
-    match = re.search(r"(\d{2}/\d{2}/\d{4}) to (\d{2}/\d{2}/\d{4})", text)
-    if match:
-        start = datetime.strptime(match.group(1), "%m/%d/%Y")
-        end = datetime.strptime(match.group(2), "%m/%d/%Y")
-        return start, end
-    return None, None
-
-parsed_files = []
-for file in uploaded_files:
-    header = get_header_title(file)
-    start, end = extract_dates(header)
-    if not start or not end:
-        st.error(f"❌ Could not parse date from: {file.name}")
-        continue
-    if "Turn Stats" in header:
-        file_type = "turn"
-    elif "Sales Statistics" in header:
-        file_type = "sales"
-    else:
-        st.warning(f"⚠️ Unrecognized file type in: {file.name}")
-        continue
-    parsed_files.append({"file": file, "type": file_type, "start": start, "end": end})
-
-this_week = {}
-last_week = {}
-
-parsed_files.sort(key=lambda x: x["end"], reverse=True)
-for entry in parsed_files:
-    ftype = entry["type"]
-    if ftype not in this_week:
-        this_week[ftype] = entry
-    elif ftype not in last_week:
-        last_week[ftype] = entry
-
-def label(entry):
-    if entry:
-        return f"{entry['file'].name} ({entry['start'].date()} → {entry['end'].date()})"
-    return "Not found"
-
-st.markdown("### 📅 File Summary")
-st.write(f"**This Week Sales:** {label(this_week.get('sales'))}")
-st.write(f"**This Week Turn:** {label(this_week.get('turn'))}")
-st.write(f"**Last Week Sales:** {label(last_week.get('sales'))}")
-st.write(f"**Last Week Turn:** {label(last_week.get('turn'))}")
-
-
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
