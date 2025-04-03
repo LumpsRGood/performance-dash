@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.35", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.36", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -150,7 +150,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.35")
+st.title("📊 Server Performance Dashboard – v1.2.36")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
@@ -177,11 +177,12 @@ if this_week_file and last_week_file:
                 lw_file = st.file_uploader(f"Last Week - {loc}", type="xlsx", key=f"lw_{loc}")
             turn_data[loc] = {"this_week": tw_file, "last_week": lw_file}
 
-        if st.button("Step 3: Generate Dashboards"):
-            for loc in locations:
-                tw_file = turn_data[loc]["this_week"]
-                lw_file = turn_data[loc]["last_week"]
-                if tw_file and lw_file:
+        if all(turn_data[loc]["this_week"] and turn_data[loc]["last_week"] for loc in locations):
+            tabs = st.tabs(locations)
+            for i, loc in enumerate(locations):
+                with tabs[i]:
+                    tw_file = turn_data[loc]["this_week"]
+                    lw_file = turn_data[loc]["last_week"]
                     tw_df = parse_turn(tw_file)
                     lw_df = parse_turn(lw_file)
                     if not tw_df.empty and not lw_df.empty:
