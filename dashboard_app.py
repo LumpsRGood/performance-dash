@@ -1,11 +1,11 @@
 import streamlit as st
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 import pandas as pd
 from datetime import datetime
 
 import re
 from datetime import datetime
 from openpyxl import load_workbook
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 
 st.title("📊 Weekly Performance Dashboard")
 
