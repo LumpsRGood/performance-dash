@@ -1,11 +1,15 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import re
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.30", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.32", layout="wide")
+
+# ---------- Standardized Color Hex Codes ---------- #
+GOOD = "#1b5e20"
+CAUTION = "#f9a825"
+BAD = "#c62828"
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -14,6 +18,7 @@ def parse_sales(file):
         df.columns = df.columns.str.strip().str.lower()
         df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
         df = df[df["employee name"].notna() & df["location"].notna()]
+        df = df[~df["employee name"].str.lower().str.contains("staff, olo")]
         df["location key"] = df["location"].astype(str).str.strip()
         return df
     except Exception as e:
@@ -58,18 +63,18 @@ def style_lw_change(val, inverse=False):
     try:
         if isinstance(val, str):
             if "No Change" in val:
-                return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
+                return f"background-color: {CAUTION}; color: black; font-weight: bold; text-align: center"
             elif "Improved" in val:
                 return (
-                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                    f"background-color: {GOOD}; color: white; font-weight: bold; text-align: center"
                     if not inverse else
-                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                    f"background-color: {BAD}; color: white; font-weight: bold; text-align: center"
                 )
             elif "Declined" in val:
                 return (
-                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                    f"background-color: {BAD}; color: white; font-weight: bold; text-align: center"
                     if not inverse else
-                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                    f"background-color: {GOOD}; color: white; font-weight: bold; text-align: center"
                 )
         return "text-align: center"
     except:
@@ -79,53 +84,55 @@ def ppa_bg(val):
     try:
         v = float(val)
         if v >= 15.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+            return f"background-color: {GOOD}; color: white; font-weight: bold; text-align: center"
         elif 15.0 <= v < 15.5:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+            return f"background-color: {CAUTION}; color: black; font-weight: bold; text-align: center"
         else:
-            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+            return f"background-color: {BAD}; color: white; font-weight: bold; text-align: center"
     except:
-        return "text-align: center; font-weight: bold"
+        return "text-align: center"
 
 def disc_pct_bg(val):
     try:
         v = float(val.strip('%')) if isinstance(val, str) else float(val)
         if v < 1.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+            return f"background-color: {GOOD}; color: white; font-weight: bold; text-align: center"
         elif 1.5 <= v < 2.0:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+            return f"background-color: {CAUTION}; color: black; font-weight: bold; text-align: center"
         else:
-            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
+            return f"background-color: {BAD}; color: white; font-weight: bold; text-align: center"
     except:
-        return "text-align: center; font-weight: bold"
+        return "text-align: center"
 
 def bev_pct_bg(val):
     try:
         v = float(val.strip('%')) if isinstance(val, str) else float(val)
         if v >= 18.5:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+            return f"background-color: {GOOD}; color: white; font-weight: bold; text-align: center"
         elif 18.0 <= v < 18.5:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+            return f"background-color: {CAUTION}; color: black; font-weight: bold; text-align: center"
         else:
-            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
+            return f"background-color: {BAD}; color: white; font-weight: bold; text-align: center"
     except:
-        return "text-align: center; font-weight: bold"
+        return "text-align: center"
 
 def turn_time_bg(val):
     try:
         v = float(val)
         if v <= 35:
-            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+            return f"background-color: {GOOD}; color: white; font-weight: bold; text-align: center"
         elif 36 <= v <= 39:
-            return "background-color: #f9a825; color: black; text-align: center; font-weight: bold"
+            return f"background-color: {CAUTION}; color: black; font-weight: bold; text-align: center"
         else:
-            return "background-color: #b71c1c; color: white; text-align: center; font-weight: bold"
+            return f"background-color: {BAD}; color: white; font-weight: bold; text-align: center"
     except:
         return "text-align: center"
 
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
+
+    df = df[~df["employee name"].str.lower().str.contains("staff, olo")]
 
     cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
             "bev %", "+/- bev % lw", "turn time", "+/- turn lw"]
@@ -153,15 +160,13 @@ def render_comparison_table(df, location):
         .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW", "+/- Turn Time LW"]) \
         .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
         .set_table_styles([
-            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
-            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
+            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
         ], overwrite=False)
 
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
-
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.30")
+st.title("📊 Server Performance Dashboard – v1.2.32")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
@@ -199,24 +204,17 @@ if this_week_file and last_week_file:
                         merged_tw = merge_data(sales_tw[sales_tw["location key"] == loc], tw_df)
                         merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
 
-                        # SAFE MERGE
-                        combined = merged_tw.copy()
-                        combined = combined.merge(
-                            merged_lw[["employee name", "ppa", "disc %", "bev %", "turn time"]],
-                            on="employee name", how="left", suffixes=("", "_lw")
+                        merged_tw["+/- ppa lw"] = merged_tw.apply(
+                            lambda r: describe_change(r["ppa"], merged_lw.loc[r.name, "ppa"]), axis=1
+                        )
+                        merged_tw["+/- disc % lw"] = merged_tw.apply(
+                            lambda r: describe_change(merged_lw.loc[r.name, "disc %"], r["disc %"], is_pct=True), axis=1
+                        )
+                        merged_tw["+/- bev % lw"] = merged_tw.apply(
+                            lambda r: describe_change(r["bev %"], merged_lw.loc[r.name, "bev %"], is_pct=True), axis=1
+                        )
+                        merged_tw["+/- turn lw"] = merged_tw.apply(
+                            lambda r: describe_change(merged_lw.loc[r.name, "turn time"], r["turn time"]), axis=1
                         )
 
-                        combined["+/- ppa lw"] = combined.apply(
-                            lambda r: describe_change(r["ppa"], r["ppa_lw"]), axis=1
-                        )
-                        combined["+/- disc % lw"] = combined.apply(
-                            lambda r: describe_change(r["disc %"], r["disc %_lw"], is_pct=True), axis=1
-                        )
-                        combined["+/- bev % lw"] = combined.apply(
-                            lambda r: describe_change(r["bev %"], r["bev %_lw"], is_pct=True), axis=1
-                        )
-                        combined["+/- turn lw"] = combined.apply(
-                            lambda r: describe_change(r["turn time"], r["turn time_lw"]), axis=1
-                        )
-
-                        render_comparison_table(combined, loc)
+                        render_comparison_table(merged_tw, loc)
