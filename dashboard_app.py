@@ -4,9 +4,9 @@ from datetime import datetime
 
 def safe_strip(val):
     if isinstance(val, str):
-        return val.strip()
+        return val.safe_strip()
     elif val is not None:
-        return str(val).strip()
+        return str(val).safe_strip()
     return ""
 
 def parse_turn(file):
@@ -26,7 +26,7 @@ def parse_turn(file):
     if "Employee Name" not in df.columns:
         return pd.DataFrame()  # fail silently if structure is wrong
 
-    df = df[df["Employee Name"].apply(lambda x: isinstance(x, str) and x.strip() != "")]
+    df = df[df["Employee Name"].apply(lambda x: isinstance(x, str) and x.safe_strip() != "")]
     df["Employee Name"] = df["Employee Name"].apply(safe_strip)
 
     numeric_fields = ["Covers", "Checks", "Guests Per Check", "Total Sales", "Table Turns", "Hours", "Avg Turn Time"]
@@ -43,11 +43,11 @@ st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="
 def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)
-        df.columns = df.columns.str.strip().str.lower()
+        df.columns = df.columns.str.safe_strip().str.lower()
         df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
         df = df[df["employee name"].notna() & df["location"].notna()]
-        df = df[df["employee name"].str.upper().str.strip() != "STAFF, OLO"]
-        df["location key"] = df["location"].astype(str).str.strip()
+        df = df[df["employee name"].str.upper().str.safe_strip() != "STAFF, OLO"]
+        df["location key"] = df["location"].astype(str).str.safe_strip()
         return df
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
@@ -56,9 +56,9 @@ def parse_sales(file):
 def parse_turn(file):
     try:
         df = pd.read_excel(file, header=4)
-        df.columns = df.columns.str.strip().str.lower()
+        df.columns = df.columns.str.safe_strip().str.lower()
         for col in df.columns:
-            if col.strip().lower() == "avg mins":
+            if col.safe_strip().lower() == "avg mins":
                 df.rename(columns={col: "turn time"}, inplace=True)
         return df
     except Exception as e:
@@ -120,7 +120,7 @@ def ppa_bg(val):
 
 def disc_pct_bg(val):
     try:
-        v = float(val.strip('%')) if isinstance(val, str) else float(val)
+        v = float(val.safe_strip('%')) if isinstance(val, str) else float(val)
         if v < 1.5:
             return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
         else:
@@ -130,7 +130,7 @@ def disc_pct_bg(val):
 
 def bev_pct_bg(val):
     try:
-        v = float(val.strip('%')) if isinstance(val, str) else float(val)
+        v = float(val.safe_strip('%')) if isinstance(val, str) else float(val)
         if v >= 18.5:
             return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
         else:
@@ -150,9 +150,9 @@ def turn_time_bg(val):
 
 def extract_first_name(full_name):
     try:
-        name = full_name.replace("🏆", "").replace("🔼", "").strip()
+        name = full_name.replace("🏆", "").replace("🔼", "").safe_strip()
         if "," in name:
-            return name.split(",")[1].strip().split()[0]
+            return name.split(",")[1].safe_strip().split()[0]
         return name.split()[0]
     except:
         return full_name
