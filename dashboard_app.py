@@ -1,10 +1,8 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import io
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.40", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -60,9 +58,17 @@ def style_lw_change(val, inverse=False):
             if "NEW" in val:
                 return "background-color: #f9a825; color: black; font-weight: bold; text-align: center"
             elif "Improved" in val:
-                return "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                return (
+                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                    if not inverse else
+                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                )
             elif "Declined" in val:
-                return "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                return (
+                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                    if not inverse else
+                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                )
         return "text-align: center"
     except:
         return "text-align: center"
@@ -70,30 +76,42 @@ def style_lw_change(val, inverse=False):
 def ppa_bg(val):
     try:
         v = float(val)
-        return "#1b5e20" if v >= 15.5 else "#c62828"
+        if v >= 15.5:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
-        return "#ffffff"
+        return "text-align: center; font-weight: bold"
 
 def disc_pct_bg(val):
     try:
         v = float(val.strip('%')) if isinstance(val, str) else float(val)
-        return "#1b5e20" if v < 1.5 else "#c62828"
+        if v < 1.5:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
-        return "#ffffff"
+        return "text-align: center; font-weight: bold"
 
 def bev_pct_bg(val):
     try:
         v = float(val.strip('%')) if isinstance(val, str) else float(val)
-        return "#1b5e20" if v >= 18.5 else "#c62828"
+        if v >= 18.5:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
-        return "#ffffff"
+        return "text-align: center; font-weight: bold"
 
 def turn_time_bg(val):
     try:
         v = float(val)
-        return "#1b5e20" if v <= 35 else "#c62828"
+        if v <= 35:
+            return "background-color: #1b5e20; color: white; text-align: center; font-weight: bold"
+        else:
+            return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
-        return "#ffffff"
+        return "text-align: center"
 
 def extract_first_name(full_name):
     try:
@@ -104,72 +122,41 @@ def extract_first_name(full_name):
     except:
         return full_name
 
-# ---------- Highlighting ---------- #
+# ---------- Highlighting Functions ---------- #
 def is_top_performer(row):
     return (
-        ppa_bg(row["PPA"]) == "#1b5e20"
-        and disc_pct_bg(row["Discount %"]) == "#1b5e20"
-        and bev_pct_bg(row["Beverage %"]) == "#1b5e20"
-        and turn_time_bg(row["Turn Time"]) == "#1b5e20"
+        ppa_bg(row["PPA"]).startswith("background-color: #1b5e20")
+        and disc_pct_bg(row["Discount %"]).startswith("background-color: #1b5e20")
+        and bev_pct_bg(row["Beverage %"]).startswith("background-color: #1b5e20")
+        and turn_time_bg(row["Turn Time"]).startswith("background-color: #1b5e20")
     )
 
 def is_most_improved(row):
     try:
         return all([
-            isinstance(row["+/- PPA LW"], str) and "Improved" in row["+/- PPA LW"],
-            isinstance(row["+/- Discount % LW"], str) and "Improved" in row["+/- Discount % LW"],
-            isinstance(row["+/- Beverage % LW"], str) and "Improved" in row["+/- Beverage % LW"],
-            isinstance(row["+/- Turn Time LW"], str) and "Improved" in row["+/- Turn Time LW"]
+            isinstance(row["+/- PPA LW"], str) and row["+/- PPA LW"].startswith("Improved"),
+            isinstance(row["+/- Discount % LW"], str) and row["+/- Discount % LW"].startswith("Improved"),
+            isinstance(row["+/- Beverage % LW"], str) and row["+/- Beverage % LW"].startswith("Improved"),
+            isinstance(row["+/- Turn Time LW"], str) and row["+/- Turn Time LW"].startswith("Improved"),
         ])
     except:
         return False
 
-# ---------- Snapshot Export ---------- #
-def render_image_dashboard(display_df, location):
-    fig, ax = plt.subplots(figsize=(12, 0.6 * len(display_df)))
-    ax.axis("off")
+def highlight_top_performer(row):
+    if is_top_performer(row):
+        return ["background-color: #2e7d32; color: white; font-weight: bold"] * len(row)
+    else:
+        return [""] * len(row)
 
-    columns = list(display_df.columns)
-    table_data = [columns] + display_df.values.tolist()
-    table = ax.table(cellText=table_data, colLabels=None, loc='center')
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
+def highlight_most_improved(row):
+    if is_most_improved(row):
+        return ["background-color: #1565c0; color: white; font-weight: bold"] * len(row)
+    else:
+        return [""] * len(row)
 
-    for i in range(len(table_data)):
-        for j in range(len(columns)):
-            cell = table[i, j]
-            if i == 0:
-                cell.set_text_props(weight="bold", color="white")
-                cell.set_facecolor("#003366")
-            else:
-                val = table_data[i][j]
-                col = columns[j].lower()
-                color = "#ffffff"
-                if col == "ppa":
-                    color = ppa_bg(val)
-                elif col == "discount %":
-                    color = disc_pct_bg(val)
-                elif col == "beverage %":
-                    color = bev_pct_bg(val)
-                elif col == "turn time":
-                    color = turn_time_bg(val)
-                elif col in ["+/- ppa lw", "+/- beverage % lw", "+/- turn time lw"]:
-                    color = "#1b5e20" if "Improved" in str(val) else "#c62828" if "Declined" in str(val) else "#f9a825"
-                elif col == "+/- discount % lw":
-                    color = "#1b5e20" if "Improved" in str(val) else "#c62828" if "Declined" in str(val) else "#f9a825"
-                cell.set_facecolor(color)
-                cell.get_text().set_weight("bold")
-                cell.get_text().set_color("white" if color not in ["#f9a825", "#ffffff"] else "black")
-
-    plt.title(f"{location} – Performance Dashboard", fontsize=14, weight="bold")
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight")
-    buf.seek(0)
-    return buf
-
-# ---------- Table Renderer ---------- #
+# ---------- Render Table ---------- #
 def render_comparison_table(df, location):
-    st.subheader(f"📍 {location} Performance Comparison")
+    st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
 
     cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
@@ -189,36 +176,45 @@ def render_comparison_table(df, location):
     display_df["Beverage %"] = display_df["Beverage %"].map("{:.2%}".format)
     display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
-    top_names, improved_names = [], []
+    # 🏆 & 🔼 Apply labels
+    top_performers = []
+    most_improved = []
     for i, row in display_df.iterrows():
         name = display_df.at[i, "Employee Name"]
         badge = ""
         if is_top_performer(row):
             badge += "🏆"
-            top_names.append(extract_first_name(name))
+            top_performers.append(extract_first_name(name))
         if is_most_improved(row):
             badge += "🔼"
-            improved_names.append(extract_first_name(name))
+            most_improved.append(extract_first_name(name))
         if badge:
             display_df.at[i, "Employee Name"] = name + " " + badge
 
-    if top_names:
-        st.success("🏅 Top Performers: " + ", ".join(top_names))
-    if improved_names:
-        st.info("🔼 Most Improved: " + ", ".join(improved_names))
+    if top_performers:
+        st.success("🏅 Top Performers: " + ", ".join(top_performers))
+    if most_improved:
+        st.info("🔼 Most Improved: " + ", ".join(most_improved))
 
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    styles = display_df.style \
+        .applymap(ppa_bg, subset=["PPA"]) \
+        .applymap(disc_pct_bg, subset=["Discount %"]) \
+        .applymap(bev_pct_bg, subset=["Beverage %"]) \
+        .applymap(turn_time_bg, subset=["Turn Time"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW"]) \
+        .apply(highlight_top_performer, axis=1) \
+        .apply(highlight_most_improved, axis=1) \
+        .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
+        .set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
+            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
+        ], overwrite=False)
 
-    img_buf = render_image_dashboard(display_df, location)
-    st.download_button(
-        label="📸 Download Snapshot",
-        data=img_buf,
-        file_name=f"{location}_dashboard.png",
-        mime="image/png"
-    )
+    st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.40")
+st.title("📊 Server Performance Dashboard – v1.2.39")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
@@ -257,6 +253,7 @@ if this_week_file and last_week_file:
                         merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
 
                         lw_index = merged_lw.set_index("employee name")
+
                         merged_tw["+/- ppa lw"] = merged_tw.apply(
                             lambda r: describe_change(r["ppa"], lw_index["ppa"].get(r["employee name"], None)), axis=1
                         )
