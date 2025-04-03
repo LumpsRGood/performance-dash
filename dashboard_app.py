@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.34", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.35", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -139,8 +139,8 @@ def render_comparison_table(df, location):
         .applymap(disc_pct_bg, subset=["Discount %"]) \
         .applymap(bev_pct_bg, subset=["Beverage %"]) \
         .applymap(turn_time_bg, subset=["Turn Time"]) \
-        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW"]) \
-        .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW", "+/- Turn Time LW"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW"]) \
         .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
@@ -150,7 +150,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.34")
+st.title("📊 Server Performance Dashboard – v1.2.35")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
