@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.36", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.37", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -113,6 +113,21 @@ def turn_time_bg(val):
     except:
         return "text-align: center"
 
+# ⭐ Top Performer Logic
+def is_top_performer(row):
+    return (
+        ppa_bg(row["PPA"]).startswith("background-color: #1b5e20")
+        and disc_pct_bg(row["Discount %"]).startswith("background-color: #1b5e20")
+        and bev_pct_bg(row["Beverage %"]).startswith("background-color: #1b5e20")
+        and turn_time_bg(row["Turn Time"]).startswith("background-color: #1b5e20")
+    )
+
+def highlight_top_performer(row):
+    if is_top_performer(row):
+        return ["background-color: #2e7d32; color: white; font-weight: bold"] * len(row)
+    else:
+        return [""] * len(row)
+
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
@@ -134,6 +149,17 @@ def render_comparison_table(df, location):
     display_df["Beverage %"] = display_df["Beverage %"].map("{:.2%}".format)
     display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
+    # 🏆 Tag top performers
+    top_performers = []
+    for i, row in display_df.iterrows():
+        if is_top_performer(row):
+            display_df.at[i, "Employee Name"] += " 🏆"
+            top_performers.append(display_df.at[i, "Employee Name"])
+
+    # 🎉 Show top performer banner
+    if top_performers:
+        st.success(f"🏅 Top Performers: {', '.join(top_performers)}")
+
     styles = display_df.style \
         .applymap(ppa_bg, subset=["PPA"]) \
         .applymap(disc_pct_bg, subset=["Discount %"]) \
@@ -141,6 +167,7 @@ def render_comparison_table(df, location):
         .applymap(turn_time_bg, subset=["Turn Time"]) \
         .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
         .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW"]) \
+        .apply(highlight_top_performer, axis=1) \
         .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
@@ -150,7 +177,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.36")
+st.title("📊 Server Performance Dashboard – v1.2.37")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
@@ -177,12 +204,11 @@ if this_week_file and last_week_file:
                 lw_file = st.file_uploader(f"Last Week - {loc}", type="xlsx", key=f"lw_{loc}")
             turn_data[loc] = {"this_week": tw_file, "last_week": lw_file}
 
-        if all(turn_data[loc]["this_week"] and turn_data[loc]["last_week"] for loc in locations):
-            tabs = st.tabs(locations)
-            for i, loc in enumerate(locations):
-                with tabs[i]:
-                    tw_file = turn_data[loc]["this_week"]
-                    lw_file = turn_data[loc]["last_week"]
+        if st.button("Step 3: Generate Dashboards"):
+            for loc in locations:
+                tw_file = turn_data[loc]["this_week"]
+                lw_file = turn_data[loc]["last_week"]
+                if tw_file and lw_file:
                     tw_df = parse_turn(tw_file)
                     lw_df = parse_turn(lw_file)
                     if not tw_df.empty and not lw_df.empty:
