@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.37", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.38", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -113,7 +113,7 @@ def turn_time_bg(val):
     except:
         return "text-align: center"
 
-# ⭐ Top Performer Logic
+# ---------- Highlighting Functions ---------- #
 def is_top_performer(row):
     return (
         ppa_bg(row["PPA"]).startswith("background-color: #1b5e20")
@@ -122,12 +122,30 @@ def is_top_performer(row):
         and turn_time_bg(row["Turn Time"]).startswith("background-color: #1b5e20")
     )
 
+def is_most_improved(row):
+    try:
+        return all([
+            isinstance(row["+/- PPA LW"], str) and row["+/- PPA LW"].startswith("Improved"),
+            isinstance(row["+/- Discount % LW"], str) and row["+/- Discount % LW"].startswith("Improved"),
+            isinstance(row["+/- Beverage % LW"], str) and row["+/- Beverage % LW"].startswith("Improved"),
+            isinstance(row["+/- Turn Time LW"], str) and row["+/- Turn Time LW"].startswith("Improved"),
+        ])
+    except:
+        return False
+
 def highlight_top_performer(row):
     if is_top_performer(row):
         return ["background-color: #2e7d32; color: white; font-weight: bold"] * len(row)
     else:
         return [""] * len(row)
 
+def highlight_most_improved(row):
+    if is_most_improved(row):
+        return ["background-color: #1565c0; color: white; font-weight: bold"] * len(row)
+    else:
+        return [""] * len(row)
+
+# ---------- Render Table ---------- #
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
@@ -149,16 +167,26 @@ def render_comparison_table(df, location):
     display_df["Beverage %"] = display_df["Beverage %"].map("{:.2%}".format)
     display_df["Turn Time"] = display_df["Turn Time"].map(lambda x: f"{x:.2f}" if pd.notnull(x) else "n/a")
 
-    # 🏆 Tag top performers
+    # 🏆 & 🔼 Apply labels
     top_performers = []
+    most_improved = []
     for i, row in display_df.iterrows():
+        name = display_df.at[i, "Employee Name"]
+        badge = ""
         if is_top_performer(row):
-            display_df.at[i, "Employee Name"] += " 🏆"
-            top_performers.append(display_df.at[i, "Employee Name"])
+            badge += "🏆"
+            top_performers.append(name)
+        if is_most_improved(row):
+            badge += "🔼"
+            most_improved.append(name)
+        if badge:
+            display_df.at[i, "Employee Name"] = name + " " + badge
 
-    # 🎉 Show top performer banner
+    # 🎉 Show banners
     if top_performers:
-        st.success(f"🏅 Top Performers: {', '.join(top_performers)}")
+        st.success("🏅 Top Performers: " + ", ".join(top_performers))
+    if most_improved:
+        st.info("🔼 Most Improved: " + ", ".join(most_improved))
 
     styles = display_df.style \
         .applymap(ppa_bg, subset=["PPA"]) \
@@ -168,6 +196,7 @@ def render_comparison_table(df, location):
         .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
         .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW"]) \
         .apply(highlight_top_performer, axis=1) \
+        .apply(highlight_most_improved, axis=1) \
         .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
@@ -177,7 +206,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.37")
+st.title("📊 Server Performance Dashboard – v1.2.38")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
