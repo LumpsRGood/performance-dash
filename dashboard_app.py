@@ -4,7 +4,7 @@ from datetime import datetime
 
 def safe_strip(val):
     if isinstance(val, str):
-        return val.safe_strip()
+        return safe_strip(val)
     elif val is not None:
         return str(val).safe_strip()
     return ""
@@ -26,7 +26,7 @@ def parse_turn(file):
     if "Employee Name" not in df.columns:
         return pd.DataFrame()  # fail silently if structure is wrong
 
-    df = df[df["Employee Name"].apply(lambda x: isinstance(x, str) and x.safe_strip() != "")]
+    df = df[df["Employee Name"].apply(lambda x: isinstance(x, str) and safe_strip(x) != "")]
     df["Employee Name"] = df["Employee Name"].apply(safe_strip)
 
     numeric_fields = ["Covers", "Checks", "Guests Per Check", "Total Sales", "Table Turns", "Hours", "Avg Turn Time"]
@@ -58,7 +58,7 @@ def parse_turn(file):
         df = pd.read_excel(file, header=4)
         df.columns = [safe_strip(c) for c in df.columns].str.lower()
         for col in df.columns:
-            if col.safe_strip().lower() == "avg mins":
+            if safe_strip(col).lower() == "avg mins":
                 df.rename(columns={col: "turn time"}, inplace=True)
         return df
     except Exception as e:
