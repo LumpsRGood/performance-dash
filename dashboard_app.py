@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.38", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -61,13 +61,13 @@ def style_lw_change(val, inverse=False):
                 return (
                     "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
                     if not inverse else
-                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
+                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
                 )
             elif "Declined" in val:
                 return (
                     "background-color: #c62828; color: white; font-weight: bold; text-align: center"
                     if not inverse else
-                    "background-color: #1b5e20; color: white; font-weight: bold; text-align: center"
+                    "background-color: #c62828; color: white; font-weight: bold; text-align: center"
                 )
         return "text-align: center"
     except:
@@ -112,6 +112,15 @@ def turn_time_bg(val):
             return "background-color: #c62828; color: white; text-align: center; font-weight: bold"
     except:
         return "text-align: center"
+
+def extract_first_name(full_name):
+    try:
+        name = full_name.replace("🏆", "").replace("🔼", "").strip()
+        if "," in name:
+            return name.split(",")[1].strip().split()[0]
+        return name.split()[0]
+    except:
+        return full_name
 
 # ---------- Highlighting Functions ---------- #
 def is_top_performer(row):
@@ -175,14 +184,13 @@ def render_comparison_table(df, location):
         badge = ""
         if is_top_performer(row):
             badge += "🏆"
-            top_performers.append(name)
+            top_performers.append(extract_first_name(name))
         if is_most_improved(row):
             badge += "🔼"
-            most_improved.append(name)
+            most_improved.append(extract_first_name(name))
         if badge:
             display_df.at[i, "Employee Name"] = name + " " + badge
 
-    # 🎉 Show banners
     if top_performers:
         st.success("🏅 Top Performers: " + ", ".join(top_performers))
     if most_improved:
@@ -206,7 +214,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.38")
+st.title("📊 Server Performance Dashboard – v1.2.39")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
