@@ -272,20 +272,20 @@ if this_week_file and last_week_file:
                         render_comparison_table(merged_tw, loc)
 
 export_html = f'''
-        <div style="text-align: right; margin-top: 10px;">
-          <button onclick="downloadDashboard('dashboard-{location}')" style="padding: 6px 12px; font-size: 14px;">Download PNG</button>
-        </div>
-        <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
-        <script>
-        function downloadDashboard(id) {{
-          html2canvas(document.getElementById(id)).then(canvas => {{
-            let link = document.createElement('a');
-            link.download = id + '.png';
-            link.href = canvas.toDataURL();
-            link.click();
-          }});
-        }}
-        </script>
+    <div style="text-align: right; margin-top: 10px;">
+      <button onclick="downloadDashboard('dashboard-{location}')" style="padding: 6px 12px; font-size: 14px;">Download PNG</button>
+    </div>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script>
+    function downloadDashboard(id) {{
+      html2canvas(document.getElementById(id)).then(canvas => {{
+        let link = document.createElement('a');
+        link.download = id + '.png';
+        link.href = canvas.toDataURL();
+        link.click();
+      }});
+    }}
+    </script>
     '''
     components.html(export_html, height=120)
     st.markdown("</div>", unsafe_allow_html=True)
