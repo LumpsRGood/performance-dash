@@ -1,6 +1,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+def safe_strip(val):
+    if isinstance(val, str):
+        return val.strip()
+    elif val is not None:
+        return str(val).strip()
+    return ""
 
 st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 
