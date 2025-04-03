@@ -6,6 +6,9 @@ from openpyxl import load_workbook
 st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 st.title("📊 Weekly Performance Dashboard")
 
+# -------------------------------
+# Safe Strip Function
+# -------------------------------
 def safe_strip(val):
     if isinstance(val, str):
         return val.strip()
@@ -13,6 +16,9 @@ def safe_strip(val):
         return str(val).strip()
     return ""
 
+# -------------------------------
+# Turn File Parser
+# -------------------------------
 def parse_turn(file):
     df = pd.read_excel(file)
 
@@ -21,7 +27,6 @@ def parse_turn(file):
         df = df[2:]
 
     df = df.dropna(how="all")
-
     df.columns = [c.lower() for c in [safe_strip(c) for c in df.columns]]
 
     if "employee name" not in df.columns:
@@ -38,5 +43,28 @@ def parse_turn(file):
 
     return df.reset_index(drop=True)
 
-# Main Streamlit app placeholder
-st.write("✅ Dashboard loaded with strip-safe parsing.")
+# -------------------------------
+# Sales File Parser
+# -------------------------------
+def parse_sales(file):
+    df = pd.read_excel(file)
+    
+    df = df.dropna(how="all")
+    df.columns = [c.lower() for c in [safe_strip(c) for c in df.columns]]
+
+    if "employee name" not in df.columns:
+        return pd.DataFrame()
+
+    df = df[df["employee name"].apply(lambda x: isinstance(x, str) and x.strip() != "")]
+    df["employee name"] = df["employee name"].apply(lambda x: safe_strip(x).upper())
+    df = df[df["employee name"] != "STAFF, OLO"]
+
+    numeric_fields = ["ppa", "sales", "checks", "hours", "discounts"]
+    for col in numeric_fields:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df.reset_index(drop=True)
+
+# Placeholder Streamlit UI
+st.write("✅ Parsers loaded. Upload files below.")
