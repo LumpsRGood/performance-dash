@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import re
-import io
 from datetime import datetime
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.33", layout="wide")
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.34", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -15,6 +14,7 @@ def parse_sales(file):
         df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
         df = df[df["employee name"].notna() & df["location"].notna()]
         df["location key"] = df["location"].astype(str).str.strip()
+        df = df[df["employee name"].str.upper().str.strip() != "STAFF, OLO"]
         return df
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
@@ -125,7 +125,6 @@ def turn_time_bg(val):
 
 def render_comparison_table(df, location):
     st.subheader(f"📍 Location: {location} Performance Comparison")
-    df = df[df["employee name"].str.upper() != "STAFF, OLO"]  # Filter fake user
     df = df.sort_values(by="ppa", ascending=False)
 
     cols = ["employee name", "ppa", "+/- ppa lw", "disc %", "+/- disc % lw",
@@ -161,7 +160,7 @@ def render_comparison_table(df, location):
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
-st.title("📊 Server Performance Dashboard – v1.2.33")
+st.title("📊 Server Performance Dashboard – v1.2.34")
 
 with st.expander("", expanded=True):
     st.markdown("### 📄 Upload this week's **Employee Sales Statistics**")
@@ -199,23 +198,26 @@ if this_week_file and last_week_file:
                         merged_tw = merge_data(sales_tw[sales_tw["location key"] == loc], tw_df)
                         merged_lw = merge_data(sales_lw[sales_lw["location key"] == loc], lw_df)
 
+                        if merged_tw.empty or merged_lw.empty:
+                            st.warning(f"⚠️ Skipping {loc} due to missing merged data")
+                            continue
+
                         lw_indexed = merged_lw.set_index("employee name")
 
                         merged_tw["+/- ppa lw"] = merged_tw.apply(
-                            lambda r: describe_change(r["ppa"], lw_indexed["ppa"].get(r["employee name"], None)),
-                            axis=1
+                            lambda r: describe_change(r["ppa"], lw_indexed["ppa"].get(r["employee name"], None)), axis=1
                         )
+
                         merged_tw["+/- disc % lw"] = merged_tw.apply(
-                            lambda r: describe_change(lw_indexed["disc %"].get(r["employee name"], None), r["disc %"], is_pct=True),
-                            axis=1
+                            lambda r: describe_change(lw_indexed["disc %"].get(r["employee name"], None), r["disc %"], is_pct=True), axis=1
                         )
+
                         merged_tw["+/- bev % lw"] = merged_tw.apply(
-                            lambda r: describe_change(r["bev %"], lw_indexed["bev %"].get(r["employee name"], None), is_pct=True),
-                            axis=1
+                            lambda r: describe_change(r["bev %"], lw_indexed["bev %"].get(r["employee name"], None), is_pct=True), axis=1
                         )
+
                         merged_tw["+/- turn lw"] = merged_tw.apply(
-                            lambda r: describe_change(lw_indexed["turn time"].get(r["employee name"], None), r["turn time"]),
-                            axis=1
+                            lambda r: describe_change(lw_indexed["turn time"].get(r["employee name"], None), r["turn time"]), axis=1
                         )
 
                         render_comparison_table(merged_tw, loc)
