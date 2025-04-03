@@ -4,9 +4,9 @@ from datetime import datetime
 
 def safe_strip(val):
     if isinstance(val, str):
-        return safe_strip(val)
+        return val.strip()
     elif val is not None:
-        return str(val).safe_strip()
+        return str(val).strip()
     return ""
 
 def parse_turn(file):
