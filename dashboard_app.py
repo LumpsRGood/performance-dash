@@ -43,11 +43,11 @@ st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="
 def parse_sales(file):
     try:
         df = pd.read_excel(file, header=4)
-        df.columns = df.columns.str.safe_strip().str.lower()
+        df.columns = df.columns.apply(safe_strip).str.lower()
         df = df[~df["location"].astype(str).str.contains("Total|Copyright|Rosnet", case=False, na=False)]
         df = df[df["employee name"].notna() & df["location"].notna()]
-        df = df[df["employee name"].str.upper().str.safe_strip() != "STAFF, OLO"]
-        df["location key"] = df["location"].astype(str).str.safe_strip()
+        df = df[df["employee name"].str.upper().apply(safe_strip) != "STAFF, OLO"]
+        df["location key"] = df["location"].astype(str).apply(safe_strip)
         return df
     except Exception as e:
         st.error(f"Error reading sales file: {e}")
@@ -56,7 +56,7 @@ def parse_sales(file):
 def parse_turn(file):
     try:
         df = pd.read_excel(file, header=4)
-        df.columns = df.columns.str.safe_strip().str.lower()
+        df.columns = df.columns.apply(safe_strip).str.lower()
         for col in df.columns:
             if col.safe_strip().lower() == "avg mins":
                 df.rename(columns={col: "turn time"}, inplace=True)
