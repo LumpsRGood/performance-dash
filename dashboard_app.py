@@ -277,14 +277,14 @@ export_html = f'''
     </div>
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script>
-    function downloadDashboard(id) {
-      html2canvas(document.getElementById(id)).then(canvas => {
+    function downloadDashboard(id) {{
+      html2canvas(document.getElementById(id)).then(canvas => {{
         let link = document.createElement('a');
         link.download = id + '.png';
         link.href = canvas.toDataURL();
         link.click();
-      });
-    }
+      }});
+    }}
     </script>
     '''
     components.html(export_html, height=120)
