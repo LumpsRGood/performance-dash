@@ -14,7 +14,7 @@ def parse_turn(file):
 
     df = pd.read_excel(file)
 
-    # Skip first row if it contains metadata like "Server Table Turn Stats..."
+    # Skip first row if it contains metadata like "Server Table Turn Stats.."
     if "Server Table Turn Stats" in str(df.columns[0]):
         df.columns = df.iloc[1]
         df = df[2:]
