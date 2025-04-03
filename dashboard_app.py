@@ -3,27 +3,6 @@ import pandas as pd
 from datetime import datetime
 
 st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
-# Inject HTML/JS for dashboard export
-import streamlit.components.v1 as components
-
-export_button_html = """
-<div style='text-align: right; margin-bottom: 10px;'>
-  <button onclick='downloadDashboard()' style='padding: 8px 16px; font-size: 16px;'>Download Dashboard as PNG</button>
-</div>
-<script src='https://html2canvas.hertzen.com/dist/html2canvas.min.js'></script>
-<script>
-function downloadDashboard() {
-  html2canvas(document.getElementById('dashboard-wrapper')).then(canvas => {
-    let link = document.createElement('a');
-    link.download = 'dashboard_snapshot.png';
-    link.href = canvas.toDataURL();
-    link.click();
-  });
-}
-</script>
-"""
-
-components.html(export_button_html, height=100)
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
@@ -177,6 +156,8 @@ def highlight_most_improved(row):
 
 # ---------- Render Table ---------- #
 def render_comparison_table(df, location):
+    import streamlit.components.v1 as components
+    st.markdown(f"<div id='dashboard-{location}'>", unsafe_allow_html=True)
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
 
@@ -289,4 +270,22 @@ if this_week_file and last_week_file:
                         )
 
                         render_comparison_table(merged_tw, loc)
-st.markdown("</div>", unsafe_allow_html=True)
+
+export_html = f'''
+    <div style="text-align: right; margin-top: 10px;">
+      <button onclick="downloadDashboard('dashboard-{location}')" style="padding: 6px 12px; font-size: 14px;">Download PNG</button>
+    </div>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script>
+    function downloadDashboard(id) {
+      html2canvas(document.getElementById(id)).then(canvas => {
+        let link = document.createElement('a');
+        link.download = id + '.png';
+        link.href = canvas.toDataURL();
+        link.click();
+      });
+    }
+    </script>
+    '''
+    components.html(export_html, height=120)
+    st.markdown("</div>", unsafe_allow_html=True)
