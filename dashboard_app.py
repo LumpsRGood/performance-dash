@@ -158,10 +158,7 @@ def highlight_most_improved(row):
 def render_comparison_table(df, location):
     import streamlit as st
     import streamlit.components.v1 as components
-
     st.markdown(f"<div id='dashboard-{location}'>", unsafe_allow_html=True)
-
-    # Original dashboard logic (unchanged from v1.2.39)
     st.subheader(f"📍 Location: {location} Performance Comparison")
     df = df.sort_values(by="ppa", ascending=False)
 
@@ -274,21 +271,21 @@ if this_week_file and last_week_file:
                         )
 
                         render_comparison_table(merged_tw, loc)
-    import streamlit.components.v1 as components
-    html_block = """<div style='text-align: right; margin-top: 10px;'>
-  <button onclick=\"downloadDashboard('dashboard-{location}')\" style=\"padding: 6px 12px; font-size: 14px;\">Download PNG</button>
-</div>
-<script src='https://html2canvas.hertzen.com/dist/html2canvas.min.js'></script>
-<script>
-function downloadDashboard(id) {
-  html2canvas(document.getElementById(id)).then(canvas => {
-    let link = document.createElement('a');
-    link.download = id + '.png';
-    link.href = canvas.toDataURL();
-    link.click();
-  });
-}
-</script>"""
-    export_html = html_block.format(location=location)
+    export_html = """
+    <div style='text-align: right; margin-top: 10px;'>
+      <button onclick=\"downloadDashboard('dashboard-{location}')\" style=\"padding: 6px 12px; font-size: 14px;\">Download PNG</button>
+    </div>
+    <script src='https://html2canvas.hertzen.com/dist/html2canvas.min.js'></script>
+    <script>
+    function downloadDashboard(id) {
+      html2canvas(document.getElementById(id)).then(canvas => {
+        let link = document.createElement('a');
+        link.download = id + '.png';
+        link.href = canvas.toDataURL();
+        link.click();
+      });
+    }
+    </script>
+    """.format(location=location)
     components.html(export_html, height=120)
     st.markdown("</div>", unsafe_allow_html=True)
