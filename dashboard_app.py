@@ -8,9 +8,9 @@ import streamlit.components.v1 as components
 
 export_button_html = """
 <div style='text-align: right; margin-bottom: 10px;'>
-  <button onclick="downloadDashboard()" style='padding: 8px 16px; font-size: 16px;'>📸 Download Dashboard as PNG</button>
+  <button onclick='downloadDashboard()' style='padding: 8px 16px; font-size: 16px;'>Download Dashboard as PNG</button>
 </div>
-<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+<script src='https://html2canvas.hertzen.com/dist/html2canvas.min.js'></script>
 <script>
 function downloadDashboard() {
   html2canvas(document.getElementById('dashboard-wrapper')).then(canvas => {
@@ -24,10 +24,6 @@ function downloadDashboard() {
 """
 
 components.html(export_button_html, height=100)
-"""
-
-# Add a wrapper div for the dashboard
-st.markdown("<div id='dashboard-wrapper'>", unsafe_allow_html=True)
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
