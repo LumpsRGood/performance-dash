@@ -5,6 +5,7 @@ from datetime import datetime
 import re
 from datetime import datetime
 from openpyxl import load_workbook
+st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 
 st.title("📊 Weekly Performance Dashboard")
 
@@ -70,7 +71,6 @@ st.write(f"**Last Week Sales:** {label(last_week.get('sales'))}")
 st.write(f"**Last Week Turn:** {label(last_week.get('turn'))}")
 
 
-st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 
 # ---------- Utility Functions ---------- #
 def parse_sales(file):
