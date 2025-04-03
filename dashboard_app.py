@@ -1,12 +1,41 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+
 def safe_strip(val):
     if isinstance(val, str):
         return val.strip()
     elif val is not None:
         return str(val).strip()
     return ""
+
+def parse_turn(file):
+    import pandas as pd
+
+    df = pd.read_excel(file)
+
+    # Skip first row if it contains metadata like "Server Table Turn Stats..."
+    if "Server Table Turn Stats" in str(df.columns[0]):
+        df.columns = df.iloc[1]
+        df = df[2:]
+
+    df = df.dropna(how="all")  # drop empty rows
+
+    df.columns = [safe_strip(c) for c in df.columns]
+
+    if "Employee Name" not in df.columns:
+        return pd.DataFrame()  # fail silently if structure is wrong
+
+    df = df[df["Employee Name"].apply(lambda x: isinstance(x, str) and x.strip() != "")]
+    df["Employee Name"] = df["Employee Name"].apply(safe_strip)
+
+    numeric_fields = ["Covers", "Checks", "Guests Per Check", "Total Sales", "Table Turns", "Hours", "Avg Turn Time"]
+    for col in numeric_fields:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df.reset_index(drop=True)
+
 
 st.set_page_config(page_title="Server Performance Dashboard - v1.2.39", layout="wide")
 
