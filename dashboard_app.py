@@ -227,7 +227,7 @@ styles = display_df.style \
             {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
         ])
 
-    st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
+st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
 # ---------- Streamlit UI ---------- #
 st.title("📊 Server Performance Dashboard – v1.2.39")
