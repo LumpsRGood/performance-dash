@@ -194,7 +194,7 @@ def render_comparison_table(df, location):
     if top_performers:
         st.success("🏅 Top Performers: " + ", ".join(top_performers))
     if most_improved:
-        st.info("🔼 Most Improved: " + ", ".join(most_improved))
+        st.info("🔼 Improved vs Last Week: " + ", ".join(most_improved))
 
     styles = display_df.style \
         .applymap(ppa_bg, subset=["PPA"]) \
