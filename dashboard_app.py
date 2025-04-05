@@ -196,12 +196,12 @@ def render_comparison_table(df, location):
     if most_improved:
         st.info("🔼 Improved vs Last Week: " + ", ".join(most_improved))
 
-    styles = display_df.style \
-        .applymap(ppa_bg, subset=["PPA"]) \
-        .applymap(disc_pct_bg, subset=["Discount %"]) \
-        .applymap(bev_pct_bg, subset=["Beverage %"]) \
-        .applymap(turn_time_bg, subset=["Turn Time"]) \
-        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
+styles = display_df.style \
+.applymap(ppa_bg, subset=["PPA"]) \
+.applymap(disc_pct_bg, subset=["Discount %"]) \
+.applymap(bev_pct_bg, subset=["Beverage %"]) \
+.applymap(turn_time_bg, subset=["Turn Time"]) \
+.applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
         .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW"]) \
         .apply(highlight_top_performer, axis=1) \
         .apply(highlight_most_improved, axis=1) \
@@ -212,12 +212,12 @@ def render_comparison_table(df, location):
         ])
 st.info("🔼 Declined vs Last Week: " + ", ".join(most_improved))
 
-    styles = display_df.style \
-        .applymap(ppa_bg, subset=["PPA"]) \
-        .applymap(disc_pct_bg, subset=["Discount %"]) \
-        .applymap(bev_pct_bg, subset=["Beverage %"]) \
-        .applymap(turn_time_bg, subset=["Turn Time"]) \
-        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
+styles = display_df.style \
+.applymap(ppa_bg, subset=["PPA"]) \
+.applymap(disc_pct_bg, subset=["Discount %"]) \
+.applymap(bev_pct_bg, subset=["Beverage %"]) \
+.applymap(turn_time_bg, subset=["Turn Time"]) \
+.applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
         .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW"]) \
         .apply(highlight_top_performer, axis=1) \
         .apply(highlight_most_improved, axis=1) \
