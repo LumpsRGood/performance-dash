@@ -209,6 +209,22 @@ def render_comparison_table(df, location):
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
             {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
+
+        st.info("🔼 Declined vs Last Week: " + ", ".join(most_improved))
+
+    styles = display_df.style \
+        .applymap(ppa_bg, subset=["PPA"]) \
+        .applymap(disc_pct_bg, subset=["Discount %"]) \
+        .applymap(bev_pct_bg, subset=["Beverage %"]) \
+        .applymap(turn_time_bg, subset=["Turn Time"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=False), subset=["+/- PPA LW", "+/- Beverage % LW", "+/- Turn Time LW"]) \
+        .applymap(lambda v: style_lw_change(v, inverse=True), subset=["+/- Discount % LW"]) \
+        .apply(highlight_top_performer, axis=1) \
+        .apply(highlight_most_improved, axis=1) \
+        .set_properties(**{"text-align": "center", "vertical-align": "middle", "font-weight": "bold", "font-size": "14px"}) \
+        .set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
+            {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
         ], overwrite=False)
 
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
