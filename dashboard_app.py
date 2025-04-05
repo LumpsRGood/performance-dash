@@ -210,7 +210,7 @@ def render_comparison_table(df, location):
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
             {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
         ])
-        st.info("🔼 Declined vs Last Week: " + ", ".join(most_improved))
+st.info("🔼 Declined vs Last Week: " + ", ".join(most_improved))
 
     styles = display_df.style \
         .applymap(ppa_bg, subset=["PPA"]) \
