@@ -209,7 +209,7 @@ def render_comparison_table(df, location):
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
             {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
-
+        ])
         st.info("🔼 Declined vs Last Week: " + ", ".join(most_improved))
 
     styles = display_df.style \
@@ -225,7 +225,7 @@ def render_comparison_table(df, location):
         .set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold')]},
             {'selector': 'td', 'props': [('text-align', 'center'), ('font-weight', 'bold')]}
-        ], overwrite=False)
+        ])
 
     st.dataframe(styles, use_container_width=True, hide_index=True, height=min(800, 45 * len(display_df) + 100))
 
