@@ -658,34 +658,35 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         tablet_cell = table[row_idx, 1]
         tablet_val = original_row["Tablet %"]
         if pd.notna(tablet_val):
-            if tablet_val >= 0.90:
-                tablet_cell.set_facecolor("#dff5e6")
+        # Tablet % coloring
+        if tablet_val >= 0.90:
+            tablet_cell.set_facecolor("#6fdc8c")   # vivid green
             elif tablet_val >= 0.80:
-                tablet_cell.set_facecolor("#fff6d6")
-            else:
-                tablet_cell.set_facecolor("#fde2e0")
+                tablet_cell.set_facecolor("#ffe066")   # bold yellow
+        else:
+            tablet_cell.set_facecolor("#ff6b6b")   # strong red
 
         # Turn Time
         turn_cell = table[row_idx, 2]
         turn_val = original_row["Turn Time"]
         if pd.notna(turn_val):
             if turn_val <= 40:
-                turn_cell.set_facecolor("#dff5e6")
+                turn_cell.set_facecolor("#6fdc8c")
             elif turn_val <= 45:
-                turn_cell.set_facecolor("#fff6d6")
+                turn_cell.set_facecolor("#ffe066")
             else:
-                turn_cell.set_facecolor("#fde2e0")
+                turn_cell.set_facecolor("#ff6b6b")
 
         # Beverage
         bev_cell = table[row_idx, 3]
         bev_val = original_row["Dine In Bev %"]
         if pd.notna(bev_val):
             if bev_val >= 0.19:
-                bev_cell.set_facecolor("#dff5e6")
+                bev_cell.set_facecolor("#6fdc8c")
             elif bev_val >= 0.18:
-                bev_cell.set_facecolor("#fff6d6")
+                bev_cell.set_facecolor("#ffe066")
             else:
-                bev_cell.set_facecolor("#fde2e0")
+                bev_cell.set_facecolor("#ff6b6b")
 
     return fig
 
