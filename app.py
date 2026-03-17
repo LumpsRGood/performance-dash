@@ -13,7 +13,7 @@ st.title("FOH Performance Dashboard")
 st.caption("Upload your source reports below to build the combined store dashboards.")
 
 # =========================
-# Store Mapping
+# Preferred Store Mapping
 # =========================
 STORE_MAP = {
     "3231": "Prattville",
@@ -22,7 +22,8 @@ STORE_MAP = {
     "4463": "Decatur",
 }
 
-KNOWN_STORES = set(STORE_MAP.keys())
+# Dynamic labels pulled from Rosnet beverage file
+DYNAMIC_STORE_LABELS = {}
 
 # =========================
 # Upload Section
@@ -70,72 +71,67 @@ def pick_col(df, keywords):
     return None
 
 
-def get_store_label(store_num):
-    if not store_num:
-        return "Unknown"
-    return f"{store_num} - {STORE_MAP.get(store_num, 'Unknown')}"
+def normalize_store_label(label):
+    label = str(label).strip()
+    label = re.sub(r"\s+", " ", label)
+    return label
 
 
-def extract_store_from_text(text):
-    matches = re.findall(r"\b\d{4}\b", str(text))
-    for match in matches:
-        if match in KNOWN_STORES:
-            return match
+def extract_store_number(text):
+    if pd.isna(text):
+        return None
+
+    text = str(text)
+
+    # Preferred match for cells like "IHOP #3231"
+    match = re.search(r'IHOP\s*#\s*(\d{4})', text, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    # Fallback: any standalone 4-digit number
+    match = re.search(r'\b(\d{4})\b', text)
+    if match:
+        return match.group(1)
+
     return None
 
 
+def extract_store_label_from_text(text):
+    text = str(text).strip()
+
+    # Example: "4463 - Decatur"
+    match = re.search(r"\b(\d{4})\b\s*[-–:]?\s*(.+)", text)
+    if match:
+        store_num = match.group(1)
+        remainder = match.group(2).strip()
+        if remainder:
+            return store_num, normalize_store_label(f"{store_num} - {remainder}")
+
+    return None, None
+
+
+def register_store_label(store_num, label):
+    if store_num and label:
+        DYNAMIC_STORE_LABELS[str(store_num)] = normalize_store_label(label)
+
+
+def get_store_label(store_num):
+    if not store_num or store_num == "Unknown":
+        return "Unknown"
+
+    store_num = str(store_num)
+
+    if store_num in STORE_MAP:
+        return f"{store_num} - {STORE_MAP[store_num]}"
+
+    if store_num in DYNAMIC_STORE_LABELS:
+        return DYNAMIC_STORE_LABELS[store_num]
+
+    return f"{store_num} - Unknown"
+
+
 def extract_store_from_filename(file):
-    return extract_store_from_text(file.name)
-
-
-def extract_store_from_csv_content(file):
-    try:
-        file.seek(0)
-        raw = file.read()
-        file.seek(0)
-
-        if isinstance(raw, bytes):
-            text = raw.decode("utf-8", errors="ignore")
-        else:
-            text = str(raw)
-
-        return extract_store_from_text(text[:5000])
-    except Exception:
-        file.seek(0)
-        return None
-
-
-def extract_store_from_excel_content(file):
-    try:
-        file.seek(0)
-        content = file.read()
-        file.seek(0)
-
-        bio = BytesIO(content)
-        preview = pd.read_excel(bio, header=None, nrows=10)
-
-        for value in preview.astype(str).fillna("").values.flatten():
-            store = extract_store_from_text(value)
-            if store:
-                return store
-        return None
-    except Exception:
-        file.seek(0)
-        return None
-
-
-def detect_store(file):
-    store = extract_store_from_filename(file)
-    if store:
-        return store
-
-    name = file.name.lower()
-    if name.endswith(".csv"):
-        store = extract_store_from_csv_content(file)
-    else:
-        store = extract_store_from_excel_content(file)
-
-    return store or "Unknown"
+    return extract_store_number(file.name)
 
 
 def safe_mean(series):
@@ -192,8 +188,6 @@ def fig_to_png_bytes(fig):
 # Tablet Processing
 # =========================
 def process_tablet_file(file):
-    store = detect_store(file)
-
     file.seek(0)
     df = pd.read_csv(file)
     df.columns = df.columns.str.replace("\n", " ", regex=False).str.strip()
@@ -204,8 +198,13 @@ def process_tablet_file(file):
         "Base (Including Disc.)": "Base",
     })
 
+    col_store = pick_col(df, ["id site", "site", "store"])
+
     required = ["Device Orders", "Server", "Base"]
     missing = [col for col in required if col not in df.columns]
+    if not col_store:
+        missing.append("Site / ID Site")
+
     if missing:
         raise ValueError(f"{file.name}: missing required tray orders columns: {', '.join(missing)}")
 
@@ -219,7 +218,14 @@ def process_tablet_file(file):
     df["Device Orders"] = df["Device Orders"].str.extract(r"(handheld|pos)", expand=False).fillna("unknown")
     df["Base"] = pd.to_numeric(df["Base"], errors="coerce").fillna(0)
     df["Server"] = df["Server"].apply(clean_name)
-    df["Store"] = store
+    df["Store"] = df[col_store].apply(extract_store_number)
+
+    # Fallback to filename only if row-level store is missing
+    fallback_store = extract_store_from_filename(file)
+    if fallback_store:
+        df["Store"] = df["Store"].fillna(fallback_store)
+
+    df["Store"] = df["Store"].fillna("Unknown")
 
     return df[["Store", "Server", "Device Orders", "Base"]]
 
@@ -267,8 +273,6 @@ def process_all_tablet_files(files):
 # Turn Time Processing
 # =========================
 def process_turn_file(file):
-    store = detect_store(file)
-
     file.seek(0)
     if file.name.lower().endswith(".csv"):
         df = pd.read_csv(file)
@@ -277,12 +281,15 @@ def process_turn_file(file):
 
     df.columns = df.columns.str.strip()
 
+    col_store = pick_col(df, ["id site", "site", "store"])
     col_open = pick_col(df, ["opened", "open", "order start", "start time", "opened at"])
     col_close = pick_col(df, ["closed", "close", "order end", "end time", "closed at"])
     col_service = pick_col(df, ["service", "service type", "order type"])
     col_server = pick_col(df, ["created by", "server", "server name", "employee", "cashier"])
 
     missing = []
+    if not col_store:
+        missing.append("Site / ID Site")
     if not col_open:
         missing.append("Opened")
     if not col_close:
@@ -305,7 +312,14 @@ def process_turn_file(file):
 
     eat[col_server] = eat[col_server].fillna("(Unknown)").replace("", "(Unknown)")
     eat["Server"] = eat[col_server].apply(clean_name)
-    eat["Store"] = store
+    eat["Store"] = eat[col_store].apply(extract_store_number)
+
+    # Fallback to filename only if row-level store is missing
+    fallback_store = extract_store_from_filename(file)
+    if fallback_store:
+        eat["Store"] = eat["Store"].fillna(fallback_store)
+
+    eat["Store"] = eat["Store"].fillna("Unknown")
 
     return eat[["Store", "Server", "Turn Time"]]
 
@@ -330,6 +344,7 @@ def process_all_turn_files(files):
 
 # =========================
 # Beverage Processing
+# Beverage file = source of truth for store labels
 # =========================
 def process_beverage_file(file):
     file.seek(0)
@@ -355,7 +370,15 @@ def process_beverage_file(file):
     if missing:
         raise ValueError(f"{file.name}: missing required Rosnet Contest Detail columns: {', '.join(missing)}")
 
-    df["Store"] = df[col_store].apply(extract_store_from_text)
+    raw_locations = df[col_store].astype(str)
+
+    # Register pretty labels from beverage file
+    for loc in raw_locations.dropna().unique():
+        store_num, label = extract_store_label_from_text(loc)
+        if store_num and label:
+            register_store_label(store_num, label)
+
+    df["Store"] = raw_locations.apply(extract_store_number)
     df["Server"] = df[col_server].apply(clean_name)
     df["Dine In Bev %"] = pd.to_numeric(df[col_bev], errors="coerce")
 
@@ -492,7 +515,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
     fig.patch.set_facecolor("white")
     ax.set_axis_off()
 
-    # Card background
     ax.add_patch(Rectangle(
         (0.01, 0.01), 0.98, 0.98,
         transform=ax.transAxes,
@@ -502,7 +524,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         zorder=0
     ))
 
-    # Header band
     ax.add_patch(Rectangle(
         (0.01, 0.91), 0.98, 0.08,
         transform=ax.transAxes,
@@ -520,7 +541,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         zorder=2
     )
 
-    # Summary lane boxes
     lane_y = 0.65
     lane_h = 0.21
     lane_w = 0.29
@@ -614,7 +634,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             zorder=2
         )
 
-    # Table
     table_bbox = [0.03, 0.04, 0.94, 0.56]
     table = ax.table(
         cellText=export_df.values,
@@ -630,18 +649,15 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
 
     ncols = len(export_df.columns)
 
-    # Header styling
     for col_idx in range(ncols):
         header_cell = table[0, col_idx]
         header_cell.set_text_props(weight="bold", color="white")
         header_cell.set_facecolor("#2d6cb5")
         header_cell.set_edgecolor("#d7dee8")
 
-    # Row + cell styling
     for row_idx in range(1, len(export_df) + 1):
         original_row = store_df_sorted.iloc[row_idx - 1]
 
-        # Base row color
         for col_idx in range(ncols):
             cell = table[row_idx, col_idx]
             cell.set_edgecolor("#dfe5ec")
@@ -650,7 +666,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             else:
                 cell.set_facecolor("white")
 
-        # Tablet %
         tablet_cell = table[row_idx, 1]
         tablet_val = original_row["Tablet %"]
         if pd.notna(tablet_val):
@@ -664,7 +679,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
                 tablet_cell.set_facecolor("#ff6b6b")
                 tablet_cell.set_text_props(weight="bold", color="white")
 
-        # Turn Time
         turn_cell = table[row_idx, 2]
         turn_val = original_row["Turn Time"]
         if pd.notna(turn_val):
@@ -678,7 +692,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
                 turn_cell.set_facecolor("#ff6b6b")
                 turn_cell.set_text_props(weight="bold", color="white")
 
-        # Beverage
         bev_cell = table[row_idx, 3]
         bev_val = original_row["Dine In Bev %"]
         if pd.notna(bev_val):
