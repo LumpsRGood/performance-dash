@@ -10,7 +10,7 @@ from matplotlib.patches import Rectangle
 st.set_page_config(page_title="FOH Performance Dashboard", layout="wide")
 
 st.title("FOH Performance Dashboard")
-st.caption("Combined Tablet Use + Turn Time + Dine In Beverage %")
+st.caption("Upload your source reports below to build the combined store dashboards.")
 
 # =========================
 # Store Mapping
@@ -28,22 +28,25 @@ KNOWN_STORES = set(STORE_MAP.keys())
 # Upload Section
 # =========================
 tablet_files = st.file_uploader(
-    "Upload Tablet Usage CSV file(s)",
+    "Upload Tray Orders CSV(s)",
     type=["csv"],
     accept_multiple_files=True,
 )
+st.caption("Use the Tray Orders export that includes handheld and POS order activity.")
 
 turn_files = st.file_uploader(
-    "Upload Turn Time file(s)",
+    "Upload Tray Checks CSV(s)",
     type=["csv", "xlsx", "xls"],
     accept_multiple_files=True,
 )
+st.caption("Use the Tray Checks export to calculate Eat-In turn times.")
 
 beverage_files = st.file_uploader(
-    "Upload Dine In Beverage file(s)",
+    "Upload Rosnet Contest Detail XLSX",
     type=["xlsx", "xls", "csv"],
     accept_multiple_files=True,
 )
+st.caption("Use the Rosnet Contest Detail export for Dine-In Beverage % by employee.")
 
 # =========================
 # Helpers
@@ -204,7 +207,7 @@ def process_tablet_file(file):
     required = ["Device Orders", "Server", "Base"]
     missing = [col for col in required if col not in df.columns]
     if missing:
-        raise ValueError(f"{file.name}: missing required tablet columns: {', '.join(missing)}")
+        raise ValueError(f"{file.name}: missing required tray orders columns: {', '.join(missing)}")
 
     df["Device Orders"] = df["Device Orders"].astype(str).str.strip().str.lower()
     df["Device Orders"] = df["Device Orders"].replace({
@@ -228,7 +231,7 @@ def process_all_tablet_files(files):
         try:
             all_rows.append(process_tablet_file(file))
         except Exception as e:
-            st.error(f"Tablet file '{file.name}' failed: {e}")
+            st.error(f"Tray Orders file '{file.name}' failed: {e}")
 
     if not all_rows:
         return pd.DataFrame(columns=["Store", "Server", "Tablet %"])
@@ -290,7 +293,7 @@ def process_turn_file(file):
         missing.append("Server")
 
     if missing:
-        raise ValueError(f"{file.name}: missing required turn columns: {', '.join(missing)}")
+        raise ValueError(f"{file.name}: missing required tray checks columns: {', '.join(missing)}")
 
     df[col_open] = pd.to_datetime(df[col_open], errors="coerce")
     df[col_close] = pd.to_datetime(df[col_close], errors="coerce")
@@ -314,7 +317,7 @@ def process_all_turn_files(files):
         try:
             all_rows.append(process_turn_file(file))
         except Exception as e:
-            st.error(f"Turn file '{file.name}' failed: {e}")
+            st.error(f"Tray Checks file '{file.name}' failed: {e}")
 
     if not all_rows:
         return pd.DataFrame(columns=["Store", "Server", "Turn Time"])
@@ -350,7 +353,7 @@ def process_beverage_file(file):
         missing.append("% of Net Sales")
 
     if missing:
-        raise ValueError(f"{file.name}: missing required beverage columns: {', '.join(missing)}")
+        raise ValueError(f"{file.name}: missing required Rosnet Contest Detail columns: {', '.join(missing)}")
 
     df["Store"] = df[col_store].apply(extract_store_from_text)
     df["Server"] = df[col_server].apply(clean_name)
@@ -378,7 +381,7 @@ def process_all_beverage_files(files):
         try:
             all_rows.append(process_beverage_file(file))
         except Exception as e:
-            st.error(f"Beverage file '{file.name}' failed: {e}")
+            st.error(f"Rosnet Contest Detail file '{file.name}' failed: {e}")
 
     if not all_rows:
         return pd.DataFrame(columns=["Store", "Server", "Dine In Bev %"])
@@ -462,7 +465,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
 
     export_df = store_df_sorted.copy()
 
-    # Export text with NO icons
     def export_tablet_text(x):
         if pd.isna(x):
             return ""
@@ -639,7 +641,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
     for row_idx in range(1, len(export_df) + 1):
         original_row = store_df_sorted.iloc[row_idx - 1]
 
-        # base row color
+        # Base row color
         for col_idx in range(ncols):
             cell = table[row_idx, col_idx]
             cell.set_edgecolor("#dfe5ec")
@@ -648,13 +650,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             else:
                 cell.set_facecolor("white")
 
-        # highlight all-green row
-        if original_row["_all_green"]:
-            for col_idx in range(ncols):
-                table[row_idx, col_idx].set_facecolor("#e8f5e9")
-
-        # metric cell coloring overrides
-                # Tablet %
+        # Tablet %
         tablet_cell = table[row_idx, 1]
         tablet_val = original_row["Tablet %"]
         if pd.notna(tablet_val):
@@ -855,4 +851,4 @@ if tablet_files or turn_files or beverage_files:
     else:
         st.warning("No valid data could be processed from the uploaded files.")
 else:
-    st.info("Upload tablet files, turn files, beverage files, or any combination to begin.")
+    st.info("Upload your Tray Orders CSV(s), Tray Checks CSV(s), and/or Rosnet Contest Detail XLSX to begin.")
