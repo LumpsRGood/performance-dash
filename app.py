@@ -218,8 +218,8 @@ if tablet_files or turn_files:
 
     if not combined.empty:
     # Drop blank / junk server rows
-    combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
-    combined = combined[combined["Server"] != ""].copy()
+        combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
+        combined = combined[combined["Server"] != ""].copy()
 
     def tablet_metric_with_dot(x):
         if pd.isna(x):
