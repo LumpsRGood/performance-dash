@@ -694,7 +694,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
                 bev_cell.set_text_props(weight="bold", color="black")
             else:
                 bev_cell.set_facecolor("#ff6b6b")
-                bev_cell.set_text_props(weight="bold", color="black")
+                bev_cell.set_text_props(weight="bold", color="white")
 
     return fig
 
