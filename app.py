@@ -74,7 +74,7 @@ def process_all_tablet_files(files):
             st.error(f"Tablet file '{file.name}' failed: {e}")
 
     if not all_rows:
-        return pd.DataFrame(columns=["Server", "Tablet Sales", "POS Sales", "Tablet %"])
+        return pd.DataFrame(columns=["Server", "Tablet %"])
 
     combined_raw = pd.concat(all_rows, ignore_index=True)
 
@@ -85,6 +85,7 @@ def process_all_tablet_files(files):
         .unstack(fill_value=0)
     )
 
+    # Ensure both columns exist
     if "handheld" not in grouped.columns:
         grouped["handheld"] = 0
     if "pos" not in grouped.columns:
@@ -93,14 +94,17 @@ def process_all_tablet_files(files):
     grouped = grouped.rename(columns={
         "handheld": "Tablet Sales",
         "pos": "POS Sales"
-    }).reset_index()
+    })
 
     grouped["Tablet %"] = (
         grouped["Tablet Sales"] /
         (grouped["Tablet Sales"] + grouped["POS Sales"])
     ).fillna(0)
 
-    return grouped[["Server", "Tablet Sales", "POS Sales", "Tablet %"]]
+    # 🔥 Only return what we actually use
+    grouped = grouped.reset_index()[["Server", "Tablet %"]]
+
+    return grouped
 
 # =========================
 # Turn Time Processing
@@ -210,41 +214,39 @@ if tablet_files or turn_files:
         combined["Turn Time"] = pd.NA
     elif not turn_df.empty:
         combined = turn_df.copy()
-        combined["Tablet Sales"] = pd.NA
-        combined["POS Sales"] = pd.NA
         combined["Tablet %"] = pd.NA
     else:
         combined = pd.DataFrame()
 
     if not combined.empty:
-    # Drop blank / junk server rows
+        # Drop blank / junk server rows
         combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
         combined = combined[combined["Server"] != ""].copy()
 
-    def tablet_metric_with_dot(x):
-        if pd.isna(x):
-            return ""
-        return f"{tablet_score_icon(x)} {x:.2%}"
+        def tablet_metric_with_dot(x):
+            if pd.isna(x):
+                return ""
+            return f"{tablet_score_icon(x)} {x:.2%}"
 
-    def turn_metric_with_dot(x):
-        if pd.isna(x):
-            return ""
-        return f"{turn_score_icon(x)} {x:.2f}"
+        def turn_metric_with_dot(x):
+            if pd.isna(x):
+                return ""
+            return f"{turn_score_icon(x)} {x:.2f}"
 
         display_df = combined.copy()
 
-    # Apply formatting
+        # Apply formatting
         display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
         display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
 
-    # Only show what matters
+        # Only show what matters
         display_df = display_df[[
             "Server",
             "Tablet %",
             "Turn Time"
         ]]
 
-    # Sort by actual tablet % (not the string)
+        # Sort by actual tablet % (not the string)
         sort_helper = combined["Tablet %"].fillna(-1)
         display_df = display_df.loc[
             sort_helper.sort_values(ascending=False).index
@@ -254,5 +256,5 @@ if tablet_files or turn_files:
         st.dataframe(display_df, use_container_width=True, hide_index=True)
     else:
         st.warning("No valid data could be processed from the uploaded files.")
-    else:
-        st.info("Upload tablet files, turn files, or both to begin.")
+else:
+    st.info("Upload tablet files, turn files, or both to begin.")
