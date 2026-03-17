@@ -654,17 +654,19 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
                 table[row_idx, col_idx].set_facecolor("#e8f5e9")
 
         # metric cell coloring overrides
-        # Tablet %
+                # Tablet %
         tablet_cell = table[row_idx, 1]
         tablet_val = original_row["Tablet %"]
         if pd.notna(tablet_val):
-        # Tablet % coloring
-        if tablet_val >= 0.90:
-            tablet_cell.set_facecolor("#6fdc8c")   # vivid green
+            if tablet_val >= 0.90:
+                tablet_cell.set_facecolor("#6fdc8c")
+                tablet_cell.set_text_props(weight="bold", color="black")
             elif tablet_val >= 0.80:
-                tablet_cell.set_facecolor("#ffe066")   # bold yellow
-        else:
-            tablet_cell.set_facecolor("#ff6b6b")   # strong red
+                tablet_cell.set_facecolor("#ffe066")
+                tablet_cell.set_text_props(weight="bold", color="black")
+            else:
+                tablet_cell.set_facecolor("#ff6b6b")
+                tablet_cell.set_text_props(weight="bold", color="white")
 
         # Turn Time
         turn_cell = table[row_idx, 2]
@@ -672,10 +674,13 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         if pd.notna(turn_val):
             if turn_val <= 40:
                 turn_cell.set_facecolor("#6fdc8c")
+                turn_cell.set_text_props(weight="bold", color="black")
             elif turn_val <= 45:
                 turn_cell.set_facecolor("#ffe066")
+                turn_cell.set_text_props(weight="bold", color="black")
             else:
                 turn_cell.set_facecolor("#ff6b6b")
+                turn_cell.set_text_props(weight="bold", color="white")
 
         # Beverage
         bev_cell = table[row_idx, 3]
@@ -683,10 +688,13 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         if pd.notna(bev_val):
             if bev_val >= 0.19:
                 bev_cell.set_facecolor("#6fdc8c")
+                bev_cell.set_text_props(weight="bold", color="black")
             elif bev_val >= 0.18:
                 bev_cell.set_facecolor("#ffe066")
+                bev_cell.set_text_props(weight="bold", color="black")
             else:
                 bev_cell.set_facecolor("#ff6b6b")
+                bev_cell.set_text_props(weight="bold", color="white")
 
     return fig
 
