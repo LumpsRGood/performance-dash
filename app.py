@@ -4,7 +4,7 @@ import streamlit as st
 st.set_page_config(page_title="FOH Performance Dashboard", layout="wide")
 
 st.title("FOH Performance Dashboard")
-st.caption("Combined Tablet Use + Turn Time")
+st.caption("Combined Tablet Use + Turn Time + Dine In Beverage %")
 
 # =========================
 # Upload Section
@@ -12,13 +12,19 @@ st.caption("Combined Tablet Use + Turn Time")
 tablet_files = st.file_uploader(
     "Upload Tablet Usage CSV file(s)",
     type=["csv"],
-    accept_multiple_files=True
+    accept_multiple_files=True,
 )
 
 turn_files = st.file_uploader(
     "Upload Turn Time file(s)",
     type=["csv", "xlsx"],
-    accept_multiple_files=True
+    accept_multiple_files=True,
+)
+
+beverage_files = st.file_uploader(
+    "Upload Dine In Beverage file(s)",
+    type=["xlsx", "xls", "csv"],
+    accept_multiple_files=True,
 )
 
 # =========================
@@ -33,6 +39,16 @@ def clean_name(name):
         name = f"{parts[1].strip()} {parts[0].strip()}"
     return " ".join(name.split()).title()
 
+
+def pick_col(df, keywords):
+    for col in df.columns:
+        col_l = col.lower().strip()
+        for key in keywords:
+            if key in col_l:
+                return col
+    return None
+
+
 # =========================
 # Tablet Processing
 # =========================
@@ -43,7 +59,7 @@ def process_tablet_file(file):
     df = df.rename(columns={
         "Device Orders Report": "Device Orders",
         "Staff Customer": "Server",
-        "Base (Including Disc.)": "Base"
+        "Base (Including Disc.)": "Base",
     })
 
     required = ["Device Orders", "Server", "Base"]
@@ -56,13 +72,14 @@ def process_tablet_file(file):
         "handheld": "handheld",
         "hand held": "handheld",
         "pos": "pos",
-        "pos terminal": "pos"
+        "pos terminal": "pos",
     })
     df["Device Orders"] = df["Device Orders"].str.extract(r"(handheld|pos)", expand=False).fillna("unknown")
     df["Base"] = pd.to_numeric(df["Base"], errors="coerce").fillna(0)
     df["Server"] = df["Server"].apply(clean_name)
 
     return df[["Server", "Device Orders", "Base"]]
+
 
 def process_all_tablet_files(files):
     all_rows = []
@@ -85,7 +102,6 @@ def process_all_tablet_files(files):
         .unstack(fill_value=0)
     )
 
-    # Ensure both columns exist
     if "handheld" not in grouped.columns:
         grouped["handheld"] = 0
     if "pos" not in grouped.columns:
@@ -93,7 +109,7 @@ def process_all_tablet_files(files):
 
     grouped = grouped.rename(columns={
         "handheld": "Tablet Sales",
-        "pos": "POS Sales"
+        "pos": "POS Sales",
     })
 
     grouped["Tablet %"] = (
@@ -101,22 +117,13 @@ def process_all_tablet_files(files):
         (grouped["Tablet Sales"] + grouped["POS Sales"])
     ).fillna(0)
 
-    # 🔥 Only return what we actually use
     grouped = grouped.reset_index()[["Server", "Tablet %"]]
-
     return grouped
+
 
 # =========================
 # Turn Time Processing
 # =========================
-def pick_col(df, keywords):
-    for col in df.columns:
-        col_l = col.lower().strip()
-        for key in keywords:
-            if key in col_l:
-                return col
-    return None
-
 def process_turn_file(file):
     if file.name.lower().endswith(".csv"):
         df = pd.read_csv(file)
@@ -156,6 +163,7 @@ def process_turn_file(file):
 
     return eat[["Server", "Turn Time"]]
 
+
 def process_all_turn_files(files):
     all_rows = []
 
@@ -179,9 +187,74 @@ def process_all_turn_files(files):
     result["Turn Time"] = result["Turn Time"].round(2)
     return result
 
+
+# =========================
+# Beverage Processing
+# Dine In only
+# Uses first column = Server
+# Uses column F = Dine In Beverage %
+# =========================
+def process_beverage_file(file):
+    if file.name.lower().endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+
+    df.columns = [str(col).strip() for col in df.columns]
+
+    if len(df.columns) < 6:
+        raise ValueError(f"{file.name}: expected at least 6 columns so Column F can be used.")
+
+    col_server = df.columns[0]
+    col_bev = df.columns[5]  # Column F
+
+    df["Server"] = df[col_server].apply(clean_name)
+    df["Dine In Bev %"] = pd.to_numeric(df[col_bev], errors="coerce")
+
+    non_null = df["Dine In Bev %"].dropna()
+    if not non_null.empty and non_null.median() > 1:
+        df["Dine In Bev %"] = df["Dine In Bev %"] / 100
+
+    result = df[["Server", "Dine In Bev %"]].copy()
+    result["Server"] = result["Server"].fillna("").astype(str).str.strip()
+    result = result[result["Server"] != ""]
+
+    return result
+
+
+def process_all_beverage_files(files):
+    all_rows = []
+
+    for file in files:
+        try:
+            all_rows.append(process_beverage_file(file))
+        except Exception as e:
+            st.error(f"Beverage file '{file.name}' failed: {e}")
+
+    if not all_rows:
+        return pd.DataFrame(columns=["Server", "Dine In Bev %"])
+
+    combined = pd.concat(all_rows, ignore_index=True)
+
+    result = combined.groupby("Server", as_index=False)["Dine In Bev %"].mean()
+    return result
+
+
 # =========================
 # Score Helpers
 # =========================
+def is_tablet_green(x):
+    return pd.notna(x) and x >= 0.90
+
+
+def is_turn_green(x):
+    return pd.notna(x) and x <= 40
+
+
+def is_bev_green(x):
+    return pd.notna(x) and x >= 0.19
+
+
 def tablet_score_icon(x):
     if pd.isna(x):
         return ""
@@ -190,6 +263,7 @@ def tablet_score_icon(x):
     elif x >= 0.80:
         return "🟡"
     return "🔴"
+
 
 def turn_score_icon(x):
     if pd.isna(x):
@@ -200,28 +274,61 @@ def turn_score_icon(x):
         return "🟡"
     return "🔴"
 
+
+def beverage_score_icon(x):
+    if pd.isna(x):
+        return ""
+    if x >= 0.19:
+        return "🟢"
+    elif x >= 0.18:
+        return "🟡"
+    return "🔴"
+
+
 # =========================
 # Main Processing
 # =========================
-if tablet_files or turn_files:
+if tablet_files or turn_files or beverage_files:
     tablet_df = process_all_tablet_files(tablet_files or [])
     turn_df = process_all_turn_files(turn_files or [])
+    beverage_df = process_all_beverage_files(beverage_files or [])
 
-    if not tablet_df.empty and not turn_df.empty:
-        combined = pd.merge(tablet_df, turn_df, on="Server", how="outer")
-    elif not tablet_df.empty:
+    combined = pd.DataFrame()
+
+    if not tablet_df.empty:
         combined = tablet_df.copy()
-        combined["Turn Time"] = pd.NA
-    elif not turn_df.empty:
-        combined = turn_df.copy()
-        combined["Tablet %"] = pd.NA
-    else:
-        combined = pd.DataFrame()
+
+    if not turn_df.empty:
+        if combined.empty:
+            combined = turn_df.copy()
+        else:
+            combined = pd.merge(combined, turn_df, on="Server", how="outer")
+
+    if not beverage_df.empty:
+        if combined.empty:
+            combined = beverage_df.copy()
+        else:
+            combined = pd.merge(combined, beverage_df, on="Server", how="outer")
 
     if not combined.empty:
-        # Drop blank / junk server rows
         combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
         combined = combined[combined["Server"] != ""].copy()
+
+        if "Tablet %" not in combined.columns:
+            combined["Tablet %"] = pd.NA
+        if "Turn Time" not in combined.columns:
+            combined["Turn Time"] = pd.NA
+        if "Dine In Bev %" not in combined.columns:
+            combined["Dine In Bev %"] = pd.NA
+
+        combined["All Green"] = combined.apply(
+            lambda row: (
+                is_tablet_green(row["Tablet %"])
+                and is_turn_green(row["Turn Time"])
+                and is_bev_green(row["Dine In Bev %"])
+            ),
+            axis=1,
+        )
 
         def tablet_metric_with_dot(x):
             if pd.isna(x):
@@ -233,28 +340,50 @@ if tablet_files or turn_files:
                 return ""
             return f"{turn_score_icon(x)} {x:.2f}"
 
+        def beverage_metric_with_dot(x):
+            if pd.isna(x):
+                return ""
+            return f"{beverage_score_icon(x)} {x:.2%}"
+
         display_df = combined.copy()
 
-        # Apply formatting
         display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
         display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
+        display_df["Dine In Bev %"] = display_df["Dine In Bev %"].apply(beverage_metric_with_dot)
+        display_df["All Green"] = display_df["All Green"].apply(lambda x: "⭐" if x else "")
 
-        # Only show what matters
         display_df = display_df[[
+            "All Green",
             "Server",
             "Tablet %",
-            "Turn Time"
+            "Turn Time",
+            "Dine In Bev %",
         ]]
 
-        # Sort by actual tablet % (not the string)
-        sort_helper = combined["Tablet %"].fillna(-1)
-        display_df = display_df.loc[
-            sort_helper.sort_values(ascending=False).index
-        ].reset_index(drop=True)
+        sort_df = combined.copy()
+        sort_df["All Green Sort"] = sort_df["All Green"].astype(int)
+        sort_df["Tablet Sort"] = sort_df["Tablet %"].fillna(-1)
+
+        sort_order = sort_df.sort_values(
+            by=["All Green Sort", "Tablet Sort"],
+            ascending=[False, False],
+        ).index
+
+        display_df = display_df.loc[sort_order].reset_index(drop=True)
+
+        def highlight_all_green(row):
+            if row["All Green"] == "⭐":
+                return ["background-color: #e8f5e9"] * len(row)
+            return [""] * len(row)
+
+        styled_df = display_df.style.apply(highlight_all_green, axis=1)
 
         st.subheader("Combined Server Performance")
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+        all_green_count = int(combined["All Green"].sum())
+        st.caption(f"All Green servers: {all_green_count}")
     else:
         st.warning("No valid data could be processed from the uploaded files.")
 else:
-    st.info("Upload tablet files, turn files, or both to begin.")
+    st.info("Upload tablet files, turn files, beverage files, or any combination to begin.")
