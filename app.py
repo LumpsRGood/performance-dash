@@ -231,28 +231,28 @@ if tablet_files or turn_files:
             return ""
         return f"{turn_score_icon(x)} {x:.2f}"
 
-    display_df = combined.copy()
+        display_df = combined.copy()
 
     # Apply formatting
-    display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
-    display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
+        display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
+        display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
 
     # Only show what matters
-    display_df = display_df[[
-        "Server",
-        "Tablet %",
-        "Turn Time"
-    ]]
+        display_df = display_df[[
+            "Server",
+            "Tablet %",
+            "Turn Time"
+        ]]
 
     # Sort by actual tablet % (not the string)
-    sort_helper = combined["Tablet %"].fillna(-1)
-    display_df = display_df.loc[
-        sort_helper.sort_values(ascending=False).index
-    ].reset_index(drop=True)
+        sort_helper = combined["Tablet %"].fillna(-1)
+        display_df = display_df.loc[
+            sort_helper.sort_values(ascending=False).index
+        ].reset_index(drop=True)
 
-    st.subheader("Combined Server Performance")
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.subheader("Combined Server Performance")
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
     else:
         st.warning("No valid data could be processed from the uploaded files.")
-else:
-    st.info("Upload tablet files, turn files, or both to begin.")
+    else:
+        st.info("Upload tablet files, turn files, or both to begin.")
