@@ -179,6 +179,8 @@ def process_all_turn_files(files):
 # Score Helpers
 # =========================
 def tablet_score_icon(x):
+    if pd.isna(x):
+        return ""
     if x >= 0.90:
         return "🟢"
     elif x >= 0.80:
@@ -186,6 +188,8 @@ def tablet_score_icon(x):
     return "🔴"
 
 def turn_score_icon(x):
+    if pd.isna(x):
+        return ""
     if x <= 40:
         return "🟢"
     elif x <= 45:
@@ -213,41 +217,41 @@ if tablet_files or turn_files:
         combined = pd.DataFrame()
 
     if not combined.empty:
-        combined["Data Status"] = "Complete"
+    # Drop blank / junk server rows
+    combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
+    combined = combined[combined["Server"] != ""].copy()
 
-        combined.loc[combined["Tablet %"].isna(), "Data Status"] = "Missing Tablet"
-        combined.loc[combined["Turn Time"].isna(), "Data Status"] = "Missing Turn"
-        combined.loc[
-            combined["Tablet %"].isna() & combined["Turn Time"].isna(),
-            "Data Status"
-        ] = "Missing Tablet + Turn"
+    def tablet_metric_with_dot(x):
+        if pd.isna(x):
+            return ""
+        return f"{tablet_score_icon(x)} {x:.2%}"
 
-        combined["Tablet Score"] = combined["Tablet %"].apply(
-            lambda x: "" if pd.isna(x) else tablet_score_icon(x)
-        )
-        combined["Turn Score"] = combined["Turn Time"].apply(
-            lambda x: "" if pd.isna(x) else turn_score_icon(x)
-        )
+    def turn_metric_with_dot(x):
+        if pd.isna(x):
+            return ""
+        return f"{turn_score_icon(x)} {x:.2f}"
 
-        display_df = combined.copy()
-        display_df["Tablet %"] = display_df["Tablet %"].apply(
-            lambda x: "" if pd.isna(x) else f"{x:.2%}"
-        )
-        display_df["Tablet Sales"] = display_df["Tablet Sales"].apply(
-            lambda x: "" if pd.isna(x) else f"{x:,.2f}"
-        )
-        display_df["POS Sales"] = display_df["POS Sales"].apply(
-            lambda x: "" if pd.isna(x) else f"{x:,.2f}"
-        )
-        display_df["Turn Time"] = display_df["Turn Time"].apply(
-            lambda x: "" if pd.isna(x) else f"{x:.2f}"
-        )
+    display_df = combined.copy()
 
-        sort_helper = combined["Tablet %"].fillna(-1)
-        display_df = display_df.loc[sort_helper.sort_values(ascending=False).index].reset_index(drop=True)
+    # Apply formatting
+    display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
+    display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
 
-        st.subheader("Combined Server Performance")
-        st.dataframe(display_df, use_container_width=True)
+    # Only show what matters
+    display_df = display_df[[
+        "Server",
+        "Tablet %",
+        "Turn Time"
+    ]]
+
+    # Sort by actual tablet % (not the string)
+    sort_helper = combined["Tablet %"].fillna(-1)
+    display_df = display_df.loc[
+        sort_helper.sort_values(ascending=False).index
+    ].reset_index(drop=True)
+
+    st.subheader("Combined Server Performance")
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
     else:
         st.warning("No valid data could be processed from the uploaded files.")
 else:
