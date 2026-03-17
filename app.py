@@ -139,11 +139,6 @@ def safe_mean(series):
     return s.mean()
 
 
-def metric_count(series, fn):
-    s = pd.to_numeric(series, errors="coerce")
-    return int(s.apply(fn).sum())
-
-
 def format_metric_value(label, value):
     if pd.isna(value):
         return "No data"
@@ -313,9 +308,6 @@ def process_all_turn_files(files):
 
 # =========================
 # Beverage Processing
-# Excel file real header is row 5 -> header=4
-# CSV export uses first row as header
-# Uses Location + Employee + % of Net Sales
 # =========================
 def process_beverage_file(file):
     file.seek(0)
@@ -421,6 +413,17 @@ def beverage_score_icon(x):
     return "🔴"
 
 
+def greens_count(row):
+    count = 0
+    if is_tablet_green(row["Tablet %"]):
+        count += 1
+    if is_turn_green(row["Turn Time"]):
+        count += 1
+    if is_bev_green(row["Dine In Bev %"]):
+        count += 1
+    return count
+
+
 # =========================
 # Main Processing
 # =========================
@@ -467,6 +470,8 @@ if tablet_files or turn_files or beverage_files:
             axis=1,
         )
 
+        combined["_greens_count"] = combined.apply(greens_count, axis=1)
+
         store_order = sorted(
             combined["Store"].dropna().unique(),
             key=lambda x: (x == "Unknown", x)
@@ -483,38 +488,35 @@ if tablet_files or turn_files or beverage_files:
             store_label = get_store_label(store)
             st.markdown(f"### 📍 {store_label}")
 
-            all_green_count = int(store_df["_all_green"].sum())
-            total_servers = len(store_df)
-
-            tablet_green_count = metric_count(store_df["Tablet %"], is_tablet_green)
-            turn_green_count = metric_count(store_df["Turn Time"], is_turn_green)
-            bev_green_count = metric_count(store_df["Dine In Bev %"], is_bev_green)
-
             avg_tablet = safe_mean(store_df["Tablet %"])
             avg_turn = safe_mean(store_df["Turn Time"])
             avg_bev = safe_mean(store_df["Dine In Bev %"])
 
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Servers", total_servers)
-            col2.metric("All Green", all_green_count)
-            col3.metric("Tablet Green", tablet_green_count)
-            col4.metric("Turn Green", turn_green_count)
+            tablet_col, turn_col, bev_col = st.columns(3)
 
-            col5, col6, col7 = st.columns(3)
-            col5.metric("Beverage Green", bev_green_count)
-            col6.metric("Avg Tablet", "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}")
-            col7.metric("Avg Turn", "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}")
+            with tablet_col:
+                st.metric(
+                    "Avg Tablet %",
+                    "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}"
+                )
+                st.markdown(format_single_rank_line(store_df, "Tablet %", "Top Tablet", ascending=False))
+                st.markdown(format_single_rank_line(store_df, "Tablet %", "Bottom Tablet", ascending=True))
 
-            col8, = st.columns(1)
-            col8.metric("Avg Dine In Bev", "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}")
+            with turn_col:
+                st.metric(
+                    "Avg Turn",
+                    "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}"
+                )
+                st.markdown(format_single_rank_line(store_df, "Turn Time", "Best Turn", ascending=True))
+                st.markdown(format_single_rank_line(store_df, "Turn Time", "Slowest Turn", ascending=False))
 
-            st.markdown(format_single_rank_line(store_df, "Tablet %", "Top Tablet", ascending=False))
-            st.markdown(format_single_rank_line(store_df, "Turn Time", "Best Turn", ascending=True))
-            st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Top Beverage", ascending=False))
-
-            st.markdown(format_single_rank_line(store_df, "Tablet %", "Bottom Tablet", ascending=True))
-            st.markdown(format_single_rank_line(store_df, "Turn Time", "Slowest Turn", ascending=False))
-            st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Bottom Beverage", ascending=True))
+            with bev_col:
+                st.metric(
+                    "Avg Dine In Bev %",
+                    "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}"
+                )
+                st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Top Beverage", ascending=False))
+                st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Bottom Beverage", ascending=True))
 
             def tablet_metric_with_dot(x):
                 if pd.isna(x):
@@ -531,27 +533,34 @@ if tablet_files or turn_files or beverage_files:
                     return ""
                 return f"{beverage_score_icon(x)} {x:.2%}"
 
-            display_df = store_df.copy()
+            store_df_sorted = store_df.copy()
+            store_df_sorted["_tablet_sort"] = pd.to_numeric(store_df_sorted["Tablet %"], errors="coerce").fillna(-1)
+            store_df_sorted["_turn_sort"] = pd.to_numeric(store_df_sorted["Turn Time"], errors="coerce").fillna(999999)
+            store_df_sorted["_bev_sort"] = pd.to_numeric(store_df_sorted["Dine In Bev %"], errors="coerce").fillna(-1)
 
+            store_df_sorted = store_df_sorted.sort_values(
+                by=["_greens_count", "_tablet_sort", "_turn_sort", "_bev_sort", "Server"],
+                ascending=[False, False, True, False, True]
+            ).reset_index(drop=True)
+
+            display_df = store_df_sorted.copy()
+            display_df["Greens"] = display_df["_greens_count"].apply(
+                lambda x: "🟢🟢🟢" if x == 3 else
+                          "🟢🟢" if x == 2 else
+                          "🟢" if x == 1 else
+                          ""
+            )
             display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
             display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
             display_df["Dine In Bev %"] = display_df["Dine In Bev %"].apply(beverage_metric_with_dot)
 
             display_df = display_df[[
+                "Greens",
                 "Server",
                 "Tablet %",
                 "Turn Time",
                 "Dine In Bev %",
             ]]
-
-            sort_helper = store_df["Tablet %"].fillna(-1)
-            display_df = display_df.loc[
-                sort_helper.sort_values(ascending=False).index
-            ].reset_index(drop=True)
-
-            store_df_sorted = store_df.loc[
-                sort_helper.sort_values(ascending=False).index
-            ].reset_index(drop=True)
 
             def highlight_all_green(row):
                 original_row = store_df_sorted.iloc[row.name]
