@@ -42,7 +42,7 @@ def clean_name(name):
 
 def pick_col(df, keywords):
     for col in df.columns:
-        col_l = col.lower().strip()
+        col_l = str(col).lower().strip()
         for key in keywords:
             if key in col_l:
                 return col
@@ -117,8 +117,7 @@ def process_all_tablet_files(files):
         (grouped["Tablet Sales"] + grouped["POS Sales"])
     ).fillna(0)
 
-    grouped = grouped.reset_index()[["Server", "Tablet %"]]
-    return grouped
+    return grouped.reset_index()[["Server", "Tablet %"]]
 
 
 # =========================
@@ -178,48 +177,50 @@ def process_all_turn_files(files):
 
     combined_raw = pd.concat(all_rows, ignore_index=True)
 
-    result = (
-        combined_raw
-        .groupby("Server", as_index=False)["Turn Time"]
-        .mean()
-    )
-
+    result = combined_raw.groupby("Server", as_index=False)["Turn Time"].mean()
     result["Turn Time"] = result["Turn Time"].round(2)
     return result
 
 
 # =========================
 # Beverage Processing
-# Dine In only
-# Uses first column = Server
-# Uses column F = Dine In Beverage %
+# Real header starts on row 4 of the sheet
+# Uses Employee + % of Net Sales
 # =========================
 def process_beverage_file(file):
     if file.name.lower().endswith(".csv"):
         df = pd.read_csv(file)
     else:
-        df = pd.read_excel(file)
+        df = pd.read_excel(file, header=3)
 
     df.columns = [str(col).strip() for col in df.columns]
 
-    if len(df.columns) < 6:
-        raise ValueError(f"{file.name}: expected at least 6 columns so Column F can be used.")
+    col_server = pick_col(df, ["employee"])
+    col_bev = pick_col(df, ["% of net sales"])
 
-    col_server = df.columns[0]
-    col_bev = df.columns[5]  # Column F
+    missing = []
+    if not col_server:
+        missing.append("Employee")
+    if not col_bev:
+        missing.append("% of Net Sales")
+
+    if missing:
+        raise ValueError(f"{file.name}: missing required beverage columns: {', '.join(missing)}")
 
     df["Server"] = df[col_server].apply(clean_name)
     df["Dine In Bev %"] = pd.to_numeric(df[col_bev], errors="coerce")
 
+    # Keep only real rows
+    df = df.dropna(subset=["Dine In Bev %"]).copy()
+    df["Server"] = df["Server"].fillna("").astype(str).str.strip()
+    df = df[df["Server"] != ""].copy()
+
+    # If report ever comes in as 19 instead of 0.19, normalize it
     non_null = df["Dine In Bev %"].dropna()
     if not non_null.empty and non_null.median() > 1:
         df["Dine In Bev %"] = df["Dine In Bev %"] / 100
 
-    result = df[["Server", "Dine In Bev %"]].copy()
-    result["Server"] = result["Server"].fillna("").astype(str).str.strip()
-    result = result[result["Server"] != ""]
-
-    return result
+    return df[["Server", "Dine In Bev %"]]
 
 
 def process_all_beverage_files(files):
@@ -235,9 +236,7 @@ def process_all_beverage_files(files):
         return pd.DataFrame(columns=["Server", "Dine In Bev %"])
 
     combined = pd.concat(all_rows, ignore_index=True)
-
-    result = combined.groupby("Server", as_index=False)["Dine In Bev %"].mean()
-    return result
+    return combined.groupby("Server", as_index=False)["Dine In Bev %"].mean()
 
 
 # =========================
@@ -299,16 +298,10 @@ if tablet_files or turn_files or beverage_files:
         combined = tablet_df.copy()
 
     if not turn_df.empty:
-        if combined.empty:
-            combined = turn_df.copy()
-        else:
-            combined = pd.merge(combined, turn_df, on="Server", how="outer")
+        combined = turn_df.copy() if combined.empty else pd.merge(combined, turn_df, on="Server", how="outer")
 
     if not beverage_df.empty:
-        if combined.empty:
-            combined = beverage_df.copy()
-        else:
-            combined = pd.merge(combined, beverage_df, on="Server", how="outer")
+        combined = beverage_df.copy() if combined.empty else pd.merge(combined, beverage_df, on="Server", how="outer")
 
     if not combined.empty:
         combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
@@ -346,7 +339,6 @@ if tablet_files or turn_files or beverage_files:
             return f"{beverage_score_icon(x)} {x:.2%}"
 
         display_df = combined.copy()
-
         display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
         display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
         display_df["Dine In Bev %"] = display_df["Dine In Bev %"].apply(beverage_metric_with_dot)
