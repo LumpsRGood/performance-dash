@@ -93,8 +93,7 @@ def extract_store_from_csv_content(file):
         else:
             text = str(raw)
 
-        store = extract_store_from_text(text[:5000])
-        return store
+        return extract_store_from_text(text[:5000])
     except Exception:
         file.seek(0)
         return None
@@ -138,6 +137,37 @@ def safe_mean(series):
     if s.empty:
         return pd.NA
     return s.mean()
+
+
+def metric_count(series, fn):
+    s = pd.to_numeric(series, errors="coerce")
+    return int(s.apply(fn).sum())
+
+
+def format_metric_value(label, value):
+    if pd.isna(value):
+        return "No data"
+    if "Tablet" in label or "Beverage" in label:
+        return f"{value:.2%}"
+    return f"{value:.2f}"
+
+
+def format_single_rank_line(df, column, label, ascending=False):
+    working = df[["Server", column]].copy()
+    working[column] = pd.to_numeric(working[column], errors="coerce")
+    working = working.dropna(subset=[column])
+
+    if working.empty:
+        return f"**{label}:** No data"
+
+    best_value = working[column].min() if ascending else working[column].max()
+    tied = working[working[column] == best_value].sort_values("Server")
+
+    people = " • ".join(
+        [f"{row['Server']} ({format_metric_value(label, row[column])})" for _, row in tied.iterrows()]
+    )
+
+    return f"**{label}:** {people}"
 
 
 # =========================
@@ -285,11 +315,9 @@ def process_all_turn_files(files):
 # Beverage Processing
 # Excel file real header is row 5 -> header=4
 # CSV export uses first row as header
-# Uses Employee + % of Net Sales
+# Uses Location + Employee + % of Net Sales
 # =========================
 def process_beverage_file(file):
-    store = detect_store(file)
-
     file.seek(0)
     if file.name.lower().endswith(".csv"):
         df = pd.read_csv(file)
@@ -298,10 +326,13 @@ def process_beverage_file(file):
 
     df.columns = [str(col).strip() for col in df.columns]
 
+    col_store = pick_col(df, ["location"])
     col_server = pick_col(df, ["employee"])
     col_bev = pick_col(df, ["% of net sales"])
 
     missing = []
+    if not col_store:
+        missing.append("Location")
     if not col_server:
         missing.append("Employee")
     if not col_bev:
@@ -310,12 +341,15 @@ def process_beverage_file(file):
     if missing:
         raise ValueError(f"{file.name}: missing required beverage columns: {', '.join(missing)}")
 
+    df["Store"] = df[col_store].apply(extract_store_from_text)
     df["Server"] = df[col_server].apply(clean_name)
     df["Dine In Bev %"] = pd.to_numeric(df[col_bev], errors="coerce")
-    df["Store"] = store
 
-    df = df.dropna(subset=["Dine In Bev %"]).copy()
+    df = df.dropna(subset=["Store", "Dine In Bev %"]).copy()
+    df["Store"] = df["Store"].astype(str).str.strip()
     df["Server"] = df["Server"].fillna("").astype(str).str.strip()
+
+    df = df[df["Store"] != ""].copy()
     df = df[df["Server"] != ""].copy()
     df = df[~df["Server"].str.lower().str.contains("total", na=False)].copy()
 
@@ -385,32 +419,6 @@ def beverage_score_icon(x):
     elif x >= 0.18:
         return "🟡"
     return "🔴"
-
-
-def metric_count(series, fn):
-    s = pd.to_numeric(series, errors="coerce")
-    return int(s.apply(fn).sum())
-
-
-def format_rank_line(df, column, label, ascending=False, top_n=3):
-    working = df[["Server", column]].copy()
-    working[column] = pd.to_numeric(working[column], errors="coerce")
-    working = working.dropna(subset=[column])
-
-    if working.empty:
-        return f"**{label}:** No data"
-
-    ranked = working.sort_values(by=column, ascending=ascending).head(top_n)
-
-    parts = []
-    for _, row in ranked.iterrows():
-        value = row[column]
-        if "Tablet" in label or "Beverage" in label:
-            parts.append(f"{row['Server']} ({value:.2%})")
-        else:
-            parts.append(f"{row['Server']} ({value:.2f})")
-
-    return f"**{label}:** " + " • ".join(parts)
 
 
 # =========================
@@ -486,42 +494,27 @@ if tablet_files or turn_files or beverage_files:
             avg_turn = safe_mean(store_df["Turn Time"])
             avg_bev = safe_mean(store_df["Dine In Bev %"])
 
-            summary_parts = [
-                f"Servers: **{total_servers}**",
-                f"All Green: **{all_green_count}**",
-                f"Tablet Green: **{tablet_green_count}**",
-                f"Turn Green: **{turn_green_count}**",
-                f"Beverage Green: **{bev_green_count}**",
-            ]
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Servers", total_servers)
+            col2.metric("All Green", all_green_count)
+            col3.metric("Tablet Green", tablet_green_count)
+            col4.metric("Turn Green", turn_green_count)
 
-            if pd.notna(avg_tablet):
-                summary_parts.append(f"Avg Tablet: **{avg_tablet:.2%}**")
-            if pd.notna(avg_turn):
-                summary_parts.append(f"Avg Turn: **{avg_turn:.2f}**")
-            if pd.notna(avg_bev):
-                summary_parts.append(f"Avg Dine In Bev: **{avg_bev:.2%}**")
+            col5, col6, col7 = st.columns(3)
+            col5.metric("Beverage Green", bev_green_count)
+            col6.metric("Avg Tablet", "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}")
+            col7.metric("Avg Turn", "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}")
 
-            st.markdown(" | ".join(summary_parts))
+            col8, = st.columns(1)
+            col8.metric("Avg Dine In Bev", "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}")
 
-            st.markdown(
-                format_rank_line(store_df, "Tablet %", "Top Tablet", ascending=False)
-            )
-            st.markdown(
-                format_rank_line(store_df, "Turn Time", "Best Turn", ascending=True)
-            )
-            st.markdown(
-                format_rank_line(store_df, "Dine In Bev %", "Top Beverage", ascending=False)
-            )
+            st.markdown(format_single_rank_line(store_df, "Tablet %", "Top Tablet", ascending=False))
+            st.markdown(format_single_rank_line(store_df, "Turn Time", "Best Turn", ascending=True))
+            st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Top Beverage", ascending=False))
 
-            st.markdown(
-                format_rank_line(store_df, "Tablet %", "Bottom Tablet", ascending=True)
-            )
-            st.markdown(
-                format_rank_line(store_df, "Turn Time", "Slowest Turn", ascending=False)
-            )
-            st.markdown(
-                format_rank_line(store_df, "Dine In Bev %", "Bottom Beverage", ascending=True)
-            )
+            st.markdown(format_single_rank_line(store_df, "Tablet %", "Bottom Tablet", ascending=True))
+            st.markdown(format_single_rank_line(store_df, "Turn Time", "Slowest Turn", ascending=False))
+            st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Bottom Beverage", ascending=True))
 
             def tablet_metric_with_dot(x):
                 if pd.isna(x):
