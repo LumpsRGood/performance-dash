@@ -1,8 +1,11 @@
 import re
+import textwrap
 from io import BytesIO
 
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 
 st.set_page_config(page_title="FOH Performance Dashboard", layout="wide")
 
@@ -151,8 +154,35 @@ def format_single_rank_line(df, column, label, ascending=False):
     tied = working[working[column] == best_value].sort_values("Server")
 
     people = " • ".join(tied["Server"].tolist())
-
     return f"**{label}:** {people}"
+
+
+def get_rank_names(df, column, ascending=False):
+    working = df[["Server", column]].copy()
+    working[column] = pd.to_numeric(working[column], errors="coerce")
+    working = working.dropna(subset=[column])
+
+    if working.empty:
+        return "No data"
+
+    best_value = working[column].min() if ascending else working[column].max()
+    tied = working[working[column] == best_value].sort_values("Server")
+
+    return " • ".join(tied["Server"].tolist())
+
+
+def wrap_names(text, width=28):
+    if not text or text == "No data":
+        return text
+    return "\n".join(textwrap.wrap(text, width=width, break_long_words=False))
+
+
+def fig_to_png_bytes(fig):
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight", facecolor="white")
+    buf.seek(0)
+    plt.close(fig)
+    return buf
 
 
 # =========================
@@ -290,7 +320,6 @@ def process_all_turn_files(files):
         return pd.DataFrame(columns=["Store", "Server", "Turn Time"])
 
     combined_raw = pd.concat(all_rows, ignore_index=True)
-
     result = combined_raw.groupby(["Store", "Server"], as_index=False)["Turn Time"].mean()
     result["Turn Time"] = result["Turn Time"].round(2)
     return result
@@ -412,6 +441,166 @@ def greens_count(row):
     if is_bev_green(row["Dine In Bev %"]):
         count += 1
     return count
+
+
+# =========================
+# WhatsApp Card Export
+# =========================
+def create_whatsapp_store_card(store_label, store_df_sorted):
+    avg_tablet = safe_mean(store_df_sorted["Tablet %"])
+    avg_turn = safe_mean(store_df_sorted["Turn Time"])
+    avg_bev = safe_mean(store_df_sorted["Dine In Bev %"])
+
+    tablet_top = get_rank_names(store_df_sorted, "Tablet %", ascending=False)
+    tablet_bottom = get_rank_names(store_df_sorted, "Tablet %", ascending=True)
+
+    turn_best = get_rank_names(store_df_sorted, "Turn Time", ascending=True)
+    turn_slowest = get_rank_names(store_df_sorted, "Turn Time", ascending=False)
+
+    bev_top = get_rank_names(store_df_sorted, "Dine In Bev %", ascending=False)
+    bev_bottom = get_rank_names(store_df_sorted, "Dine In Bev %", ascending=True)
+
+    export_df = store_df_sorted.copy()
+
+    def tablet_metric_with_dot(x):
+        if pd.isna(x):
+            return ""
+        return f"{tablet_score_icon(x)} {x:.2%}"
+
+    def turn_metric_with_dot(x):
+        if pd.isna(x):
+            return ""
+        return f"{turn_score_icon(x)} {x:.2f}"
+
+    def beverage_metric_with_dot(x):
+        if pd.isna(x):
+            return ""
+        return f"{beverage_score_icon(x)} {x:.2%}"
+
+    export_df["Tablet %"] = export_df["Tablet %"].apply(tablet_metric_with_dot)
+    export_df["Turn Time"] = export_df["Turn Time"].apply(turn_metric_with_dot)
+    export_df["Dine In Bev %"] = export_df["Dine In Bev %"].apply(beverage_metric_with_dot)
+
+    export_df = export_df[["Server", "Tablet %", "Turn Time", "Dine In Bev %"]].copy()
+
+    row_count = len(export_df)
+    fig_height = max(8.8, 4.4 + (row_count * 0.44))
+    fig, ax = plt.subplots(figsize=(8.2, fig_height))
+    fig.patch.set_facecolor("white")
+    ax.set_axis_off()
+
+    # Card background
+    ax.add_patch(Rectangle((0.01, 0.01), 0.98, 0.98, transform=ax.transAxes,
+                           facecolor="white", edgecolor="#d7dee8", linewidth=1.2, zorder=0))
+
+    # Header band
+    ax.add_patch(Rectangle((0.01, 0.91), 0.98, 0.08, transform=ax.transAxes,
+                           facecolor="#1d4f91", edgecolor="#1d4f91", zorder=1))
+    ax.text(
+        0.03, 0.95, store_label,
+        transform=ax.transAxes,
+        fontsize=17,
+        fontweight="bold",
+        color="white",
+        va="center",
+        zorder=2
+    )
+
+    # Summary lane boxes
+    lane_y = 0.69
+    lane_h = 0.17
+    lane_w = 0.29
+    lane_gap = 0.03
+    lane_xs = [0.03, 0.03 + lane_w + lane_gap, 0.03 + (lane_w + lane_gap) * 2]
+
+    lane_data = [
+        (
+            "TABLET",
+            "Avg Tablet %",
+            "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}",
+            "Top",
+            wrap_names(tablet_top, width=24),
+            "Bottom",
+            wrap_names(tablet_bottom, width=24),
+        ),
+        (
+            "TURN",
+            "Avg Turn",
+            "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}",
+            "Best",
+            wrap_names(turn_best, width=24),
+            "Slowest",
+            wrap_names(turn_slowest, width=24),
+        ),
+        (
+            "BEVERAGE",
+            "Avg Dine In Bev %",
+            "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}",
+            "Top",
+            wrap_names(bev_top, width=24),
+            "Bottom",
+            wrap_names(bev_bottom, width=24),
+        ),
+    ]
+
+    for lane_x, lane in zip(lane_xs, lane_data):
+        title, avg_label, avg_value, label1, value1, label2, value2 = lane
+
+        ax.add_patch(Rectangle((lane_x, lane_y), lane_w, lane_h, transform=ax.transAxes,
+                               facecolor="#f5f8fc", edgecolor="#cfd9e6", linewidth=1, zorder=1))
+        ax.text(lane_x + 0.015, lane_y + lane_h - 0.025, title,
+                transform=ax.transAxes, fontsize=11, fontweight="bold",
+                color="#1d4f91", va="top", zorder=2)
+
+        ax.text(lane_x + 0.015, lane_y + lane_h - 0.060, avg_label,
+                transform=ax.transAxes, fontsize=8.8, color="#5c6773", va="top", zorder=2)
+        ax.text(lane_x + 0.015, lane_y + lane_h - 0.090, avg_value,
+                transform=ax.transAxes, fontsize=12, fontweight="bold",
+                color="#222222", va="top", zorder=2)
+
+        ax.text(lane_x + 0.015, lane_y + lane_h - 0.130, f"{label1}: {value1}",
+                transform=ax.transAxes, fontsize=8.6, color="#222222", va="top", zorder=2)
+        ax.text(lane_x + 0.015, lane_y + lane_h - 0.185, f"{label2}: {value2}",
+                transform=ax.transAxes, fontsize=8.6, color="#222222", va="top", zorder=2)
+
+    # Table
+    table_bbox = [0.03, 0.04, 0.94, 0.58]
+    table = ax.table(
+        cellText=export_df.values,
+        colLabels=export_df.columns,
+        cellLoc="left",
+        loc="center",
+        bbox=table_bbox
+    )
+
+    table.auto_set_font_size(False)
+    table.set_fontsize(9.8)
+    table.scale(1, 1.45)
+
+    # Table styling
+    ncols = len(export_df.columns)
+
+    for col_idx in range(ncols):
+        header_cell = table[0, col_idx]
+        header_cell.set_text_props(weight="bold", color="white")
+        header_cell.set_facecolor("#2d6cb5")
+        header_cell.set_edgecolor("#d7dee8")
+
+    for row_idx in range(1, len(export_df) + 1):
+        for col_idx in range(ncols):
+            cell = table[row_idx, col_idx]
+            cell.set_edgecolor("#dfe5ec")
+            if row_idx % 2 == 0:
+                cell.set_facecolor("#fbfcfe")
+            else:
+                cell.set_facecolor("white")
+
+        original_row = store_df_sorted.iloc[row_idx - 1]
+        if original_row["_all_green"]:
+            for col_idx in range(ncols):
+                table[row_idx, col_idx].set_facecolor("#e8f5e9")
+
+    return fig
 
 
 # =========================
@@ -554,6 +743,18 @@ if tablet_files or turn_files or beverage_files:
             styled_df = display_df.style.apply(highlight_all_green, axis=1)
 
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+            card_fig = create_whatsapp_store_card(store_label, store_df_sorted)
+            card_buf = fig_to_png_bytes(card_fig)
+            safe_store_label = store_label.replace(" - ", "_").replace(" ", "_")
+
+            st.download_button(
+                label=f"Download {store_label} WhatsApp Card",
+                data=card_buf,
+                file_name=f"{safe_store_label}_whatsapp_card.png",
+                mime="image/png",
+            )
+
             st.divider()
     else:
         st.warning("No valid data could be processed from the uploaded files.")
