@@ -1,16 +1,25 @@
 import pandas as pd
 import streamlit as st
-import numpy as np
 
 st.set_page_config(page_title="FOH Performance Dashboard", layout="wide")
 
-st.title("📊 FOH Performance Dashboard (Tablet + Turn)")
+st.title("FOH Performance Dashboard")
+st.caption("Combined Tablet Use + Turn Time")
 
 # =========================
 # Upload Section
 # =========================
-tablet_file = st.file_uploader("Upload Tablet Usage CSV", type=["csv"])
-turn_file = st.file_uploader("Upload Turn Time File", type=["csv", "xlsx"])
+tablet_files = st.file_uploader(
+    "Upload Tablet Usage CSV file(s)",
+    type=["csv"],
+    accept_multiple_files=True
+)
+
+turn_files = st.file_uploader(
+    "Upload Turn Time file(s)",
+    type=["csv", "xlsx"],
+    accept_multiple_files=True
+)
 
 # =========================
 # Helper: Name Cleanup
@@ -18,19 +27,18 @@ turn_file = st.file_uploader("Upload Turn Time File", type=["csv", "xlsx"])
 def clean_name(name):
     if pd.isna(name):
         return ""
-    name = str(name).strip().lower()
+    name = str(name).strip()
     if "," in name:
-        parts = name.split(",")
-        name = parts[1].strip() + " " + parts[0].strip()
-    return name.title()
+        parts = name.split(",", 1)
+        name = f"{parts[1].strip()} {parts[0].strip()}"
+    return " ".join(name.split()).title()
 
 # =========================
 # Tablet Processing
 # =========================
-def process_tablet(file):
+def process_tablet_file(file):
     df = pd.read_csv(file)
-
-    df.columns = df.columns.str.replace("\n", " ").str.strip()
+    df.columns = df.columns.str.replace("\n", " ", regex=False).str.strip()
 
     df = df.rename(columns={
         "Device Orders Report": "Device Orders",
@@ -38,18 +46,44 @@ def process_tablet(file):
         "Base (Including Disc.)": "Base"
     })
 
-    df["Device Orders"] = df["Device Orders"].str.strip().str.lower()
+    required = ["Device Orders", "Server", "Base"]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise ValueError(f"{file.name}: missing required tablet columns: {', '.join(missing)}")
+
+    df["Device Orders"] = df["Device Orders"].astype(str).str.strip().str.lower()
     df["Device Orders"] = df["Device Orders"].replace({
         "handheld": "handheld",
         "hand held": "handheld",
         "pos": "pos",
         "pos terminal": "pos"
     })
-
     df["Device Orders"] = df["Device Orders"].str.extract(r"(handheld|pos)", expand=False).fillna("unknown")
     df["Base"] = pd.to_numeric(df["Base"], errors="coerce").fillna(0)
+    df["Server"] = df["Server"].apply(clean_name)
 
-    grouped = df.groupby(["Server", "Device Orders"])["Base"].sum().unstack(fill_value=0)
+    return df[["Server", "Device Orders", "Base"]]
+
+def process_all_tablet_files(files):
+    all_rows = []
+
+    for file in files:
+        try:
+            all_rows.append(process_tablet_file(file))
+        except Exception as e:
+            st.error(f"Tablet file '{file.name}' failed: {e}")
+
+    if not all_rows:
+        return pd.DataFrame(columns=["Server", "Tablet Sales", "POS Sales", "Tablet %"])
+
+    combined_raw = pd.concat(all_rows, ignore_index=True)
+
+    grouped = (
+        combined_raw
+        .groupby(["Server", "Device Orders"])["Base"]
+        .sum()
+        .unstack(fill_value=0)
+    )
 
     if "handheld" not in grouped.columns:
         grouped["handheld"] = 0
@@ -57,106 +91,164 @@ def process_tablet(file):
         grouped["pos"] = 0
 
     grouped = grouped.rename(columns={
-        "handheld": "Handheld Sales",
+        "handheld": "Tablet Sales",
         "pos": "POS Sales"
     }).reset_index()
 
-    grouped["Tablet %"] = grouped["Handheld Sales"] / (grouped["Handheld Sales"] + grouped["POS Sales"])
-    grouped["Tablet %"] = grouped["Tablet %"].fillna(0)
+    grouped["Tablet %"] = (
+        grouped["Tablet Sales"] /
+        (grouped["Tablet Sales"] + grouped["POS Sales"])
+    ).fillna(0)
 
-    grouped["Server"] = grouped["Server"].apply(clean_name)
-
-    return grouped[["Server", "Tablet %"]]
+    return grouped[["Server", "Tablet Sales", "POS Sales", "Tablet %"]]
 
 # =========================
 # Turn Time Processing
 # =========================
-def process_turn(file):
-    if file.name.endswith(".csv"):
+def pick_col(df, keywords):
+    for col in df.columns:
+        col_l = col.lower().strip()
+        for key in keywords:
+            if key in col_l:
+                return col
+    return None
+
+def process_turn_file(file):
+    if file.name.lower().endswith(".csv"):
         df = pd.read_csv(file)
     else:
         df = pd.read_excel(file)
 
     df.columns = df.columns.str.strip()
 
-    def pick_col(df, keywords):
-        for col in df.columns:
-            for key in keywords:
-                if key in col.lower():
-                    return col
-        return None
+    col_open = pick_col(df, ["opened", "open", "order start", "start time", "opened at"])
+    col_close = pick_col(df, ["closed", "close", "order end", "end time", "closed at"])
+    col_service = pick_col(df, ["service", "service type", "order type"])
+    col_server = pick_col(df, ["created by", "server", "server name", "employee", "cashier"])
 
-    col_open = pick_col(df, ["opened"])
-    col_close = pick_col(df, ["closed"])
-    col_service = pick_col(df, ["service"])
-    col_server = pick_col(df, ["created by", "server", "employee"])
+    missing = []
+    if not col_open:
+        missing.append("Opened")
+    if not col_close:
+        missing.append("Closed")
+    if not col_service:
+        missing.append("Service")
+    if not col_server:
+        missing.append("Server")
 
-    if not all([col_open, col_close, col_service, col_server]):
-        st.error("Missing required columns in turn file")
-        return pd.DataFrame()
+    if missing:
+        raise ValueError(f"{file.name}: missing required turn columns: {', '.join(missing)}")
 
     df[col_open] = pd.to_datetime(df[col_open], errors="coerce")
     df[col_close] = pd.to_datetime(df[col_close], errors="coerce")
 
     eat = df[df[col_service].astype(str).str.contains("eat in", case=False, na=False)].copy()
-
     eat["Turn Time"] = (eat[col_close] - eat[col_open]).dt.total_seconds() / 60
     eat = eat.dropna(subset=["Turn Time"])
+    eat = eat[eat["Turn Time"] >= 0]
 
-    result = eat.groupby(col_server)["Turn Time"].mean().reset_index()
-    result = result.rename(columns={col_server: "Server"})
+    eat[col_server] = eat[col_server].fillna("(Unknown)").replace("", "(Unknown)")
+    eat["Server"] = eat[col_server].apply(clean_name)
 
-    result["Server"] = result["Server"].apply(clean_name)
+    return eat[["Server", "Turn Time"]]
 
+def process_all_turn_files(files):
+    all_rows = []
+
+    for file in files:
+        try:
+            all_rows.append(process_turn_file(file))
+        except Exception as e:
+            st.error(f"Turn file '{file.name}' failed: {e}")
+
+    if not all_rows:
+        return pd.DataFrame(columns=["Server", "Turn Time"])
+
+    combined_raw = pd.concat(all_rows, ignore_index=True)
+
+    result = (
+        combined_raw
+        .groupby("Server", as_index=False)["Turn Time"]
+        .mean()
+    )
+
+    result["Turn Time"] = result["Turn Time"].round(2)
     return result
+
+# =========================
+# Score Helpers
+# =========================
+def tablet_score_icon(x):
+    if x >= 0.90:
+        return "🟢"
+    elif x >= 0.80:
+        return "🟡"
+    return "🔴"
+
+def turn_score_icon(x):
+    if x <= 40:
+        return "🟢"
+    elif x <= 45:
+        return "🟡"
+    return "🔴"
 
 # =========================
 # Main Processing
 # =========================
-if tablet_file and turn_file:
-
-    tablet_df = process_tablet(tablet_file)
-    turn_df = process_turn(turn_file)
+if tablet_files or turn_files:
+    tablet_df = process_all_tablet_files(tablet_files or [])
+    turn_df = process_all_turn_files(turn_files or [])
 
     if not tablet_df.empty and not turn_df.empty:
-
         combined = pd.merge(tablet_df, turn_df, on="Server", how="outer")
-
-        # =========================
-        # Flags
-        # =========================
-        combined["Tablet %"] = combined["Tablet %"].fillna(0)
-        combined["Turn Time"] = combined["Turn Time"].fillna(0)
-
-        def tablet_color(x):
-            if x >= 0.8:
-                return "🟢"
-            elif x >= 0.6:
-                return "🟡"
-            return "🔴"
-
-        def turn_color(x):
-            if x < 35:
-                return "🟢"
-            elif x <= 39:
-                return "🟡"
-            return "🔴"
-
-        combined["Tablet Score"] = combined["Tablet %"].apply(tablet_color)
-        combined["Turn Score"] = combined["Turn Time"].apply(turn_color)
-
-        # =========================
-        # Display
-        # =========================
-        combined["Tablet %"] = (combined["Tablet %"] * 100).round(2)
-
-        combined = combined.sort_values(by="Tablet %", ascending=False)
-
-        st.subheader("📋 Combined Server Performance")
-        st.dataframe(combined, use_container_width=True)
-
+    elif not tablet_df.empty:
+        combined = tablet_df.copy()
+        combined["Turn Time"] = pd.NA
+    elif not turn_df.empty:
+        combined = turn_df.copy()
+        combined["Tablet Sales"] = pd.NA
+        combined["POS Sales"] = pd.NA
+        combined["Tablet %"] = pd.NA
     else:
-        st.warning("One of the datasets failed to process.")
+        combined = pd.DataFrame()
 
+    if not combined.empty:
+        combined["Data Status"] = "Complete"
+
+        combined.loc[combined["Tablet %"].isna(), "Data Status"] = "Missing Tablet"
+        combined.loc[combined["Turn Time"].isna(), "Data Status"] = "Missing Turn"
+        combined.loc[
+            combined["Tablet %"].isna() & combined["Turn Time"].isna(),
+            "Data Status"
+        ] = "Missing Tablet + Turn"
+
+        combined["Tablet Score"] = combined["Tablet %"].apply(
+            lambda x: "" if pd.isna(x) else tablet_score_icon(x)
+        )
+        combined["Turn Score"] = combined["Turn Time"].apply(
+            lambda x: "" if pd.isna(x) else turn_score_icon(x)
+        )
+
+        display_df = combined.copy()
+        display_df["Tablet %"] = display_df["Tablet %"].apply(
+            lambda x: "" if pd.isna(x) else f"{x:.2%}"
+        )
+        display_df["Tablet Sales"] = display_df["Tablet Sales"].apply(
+            lambda x: "" if pd.isna(x) else f"{x:,.2f}"
+        )
+        display_df["POS Sales"] = display_df["POS Sales"].apply(
+            lambda x: "" if pd.isna(x) else f"{x:,.2f}"
+        )
+        display_df["Turn Time"] = display_df["Turn Time"].apply(
+            lambda x: "" if pd.isna(x) else f"{x:.2f}"
+        )
+
+        sort_helper = combined["Tablet %"].fillna(-1)
+        display_df = display_df.loc[sort_helper.sort_values(ascending=False).index].reset_index(drop=True)
+
+        st.subheader("Combined Server Performance")
+        st.dataframe(display_df, use_container_width=True)
+    else:
+        st.warning("No valid data could be processed from the uploaded files.")
 else:
-    st.info("Upload both Tablet and Turn files to begin.")
+    st.info("Upload tablet files, turn files, or both to begin.")
