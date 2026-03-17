@@ -189,9 +189,11 @@ def process_all_turn_files(files):
 # =========================
 def process_beverage_file(file):
     if file.name.lower().endswith(".csv"):
+        # CSV export already has its true header on the first row
         df = pd.read_csv(file)
     else:
-        df = pd.read_excel(file, header=3)
+        # Excel file's real header is on row 5
+        df = pd.read_excel(file, header=4)
 
     df.columns = [str(col).strip() for col in df.columns]
 
@@ -210,18 +212,16 @@ def process_beverage_file(file):
     df["Server"] = df[col_server].apply(clean_name)
     df["Dine In Bev %"] = pd.to_numeric(df[col_bev], errors="coerce")
 
-    # Keep only real rows
     df = df.dropna(subset=["Dine In Bev %"]).copy()
     df["Server"] = df["Server"].fillna("").astype(str).str.strip()
     df = df[df["Server"] != ""].copy()
 
-    # If report ever comes in as 19 instead of 0.19, normalize it
+    # Safety net in case a future export comes as 19 instead of 0.19
     non_null = df["Dine In Bev %"].dropna()
     if not non_null.empty and non_null.median() > 1:
         df["Dine In Bev %"] = df["Dine In Bev %"] / 100
 
     return df[["Server", "Dine In Bev %"]]
-
 
 def process_all_beverage_files(files):
     all_rows = []
