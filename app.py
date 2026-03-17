@@ -171,7 +171,7 @@ def get_rank_names(df, column, ascending=False):
     return " • ".join(tied["Server"].tolist())
 
 
-def wrap_names(text, width=28):
+def wrap_names(text, width=18):
     if not text or text == "No data":
         return text
     return "\n".join(textwrap.wrap(text, width=width, break_long_words=False))
@@ -462,40 +462,52 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
 
     export_df = store_df_sorted.copy()
 
-    def tablet_metric_with_dot(x):
+    # Export text with NO icons
+    def export_tablet_text(x):
         if pd.isna(x):
             return ""
-        return f"{tablet_score_icon(x)} {x:.2%}"
+        return f"{x:.2%}"
 
-    def turn_metric_with_dot(x):
+    def export_turn_text(x):
         if pd.isna(x):
             return ""
-        return f"{turn_score_icon(x)} {x:.2f}"
+        return f"{x:.2f}"
 
-    def beverage_metric_with_dot(x):
+    def export_bev_text(x):
         if pd.isna(x):
             return ""
-        return f"{beverage_score_icon(x)} {x:.2%}"
+        return f"{x:.2%}"
 
-    export_df["Tablet %"] = export_df["Tablet %"].apply(tablet_metric_with_dot)
-    export_df["Turn Time"] = export_df["Turn Time"].apply(turn_metric_with_dot)
-    export_df["Dine In Bev %"] = export_df["Dine In Bev %"].apply(beverage_metric_with_dot)
+    export_df["Tablet %"] = export_df["Tablet %"].apply(export_tablet_text)
+    export_df["Turn Time"] = export_df["Turn Time"].apply(export_turn_text)
+    export_df["Dine In Bev %"] = export_df["Dine In Bev %"].apply(export_bev_text)
 
     export_df = export_df[["Server", "Tablet %", "Turn Time", "Dine In Bev %"]].copy()
 
     row_count = len(export_df)
-    fig_height = max(8.8, 4.4 + (row_count * 0.44))
+    fig_height = max(10.2, 5.6 + (row_count * 0.48))
     fig, ax = plt.subplots(figsize=(8.2, fig_height))
     fig.patch.set_facecolor("white")
     ax.set_axis_off()
 
     # Card background
-    ax.add_patch(Rectangle((0.01, 0.01), 0.98, 0.98, transform=ax.transAxes,
-                           facecolor="white", edgecolor="#d7dee8", linewidth=1.2, zorder=0))
+    ax.add_patch(Rectangle(
+        (0.01, 0.01), 0.98, 0.98,
+        transform=ax.transAxes,
+        facecolor="white",
+        edgecolor="#d7dee8",
+        linewidth=1.2,
+        zorder=0
+    ))
 
     # Header band
-    ax.add_patch(Rectangle((0.01, 0.91), 0.98, 0.08, transform=ax.transAxes,
-                           facecolor="#1d4f91", edgecolor="#1d4f91", zorder=1))
+    ax.add_patch(Rectangle(
+        (0.01, 0.91), 0.98, 0.08,
+        transform=ax.transAxes,
+        facecolor="#1d4f91",
+        edgecolor="#1d4f91",
+        zorder=1
+    ))
     ax.text(
         0.03, 0.95, store_label,
         transform=ax.transAxes,
@@ -507,8 +519,8 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
     )
 
     # Summary lane boxes
-    lane_y = 0.69
-    lane_h = 0.17
+    lane_y = 0.65
+    lane_h = 0.21
     lane_w = 0.29
     lane_gap = 0.03
     lane_xs = [0.03, 0.03 + lane_w + lane_gap, 0.03 + (lane_w + lane_gap) * 2]
@@ -519,52 +531,89 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             "Avg Tablet %",
             "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}",
             "Top",
-            wrap_names(tablet_top, width=24),
+            wrap_names(tablet_top, width=18),
             "Bottom",
-            wrap_names(tablet_bottom, width=24),
+            wrap_names(tablet_bottom, width=18),
         ),
         (
             "TURN",
             "Avg Turn",
             "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}",
             "Best",
-            wrap_names(turn_best, width=24),
+            wrap_names(turn_best, width=18),
             "Slowest",
-            wrap_names(turn_slowest, width=24),
+            wrap_names(turn_slowest, width=18),
         ),
         (
             "BEVERAGE",
             "Avg Dine In Bev %",
             "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}",
             "Top",
-            wrap_names(bev_top, width=24),
+            wrap_names(bev_top, width=18),
             "Bottom",
-            wrap_names(bev_bottom, width=24),
+            wrap_names(bev_bottom, width=18),
         ),
     ]
 
     for lane_x, lane in zip(lane_xs, lane_data):
         title, avg_label, avg_value, label1, value1, label2, value2 = lane
 
-        ax.add_patch(Rectangle((lane_x, lane_y), lane_w, lane_h, transform=ax.transAxes,
-                               facecolor="#f5f8fc", edgecolor="#cfd9e6", linewidth=1, zorder=1))
-        ax.text(lane_x + 0.015, lane_y + lane_h - 0.025, title,
-                transform=ax.transAxes, fontsize=11, fontweight="bold",
-                color="#1d4f91", va="top", zorder=2)
+        ax.add_patch(Rectangle(
+            (lane_x, lane_y), lane_w, lane_h,
+            transform=ax.transAxes,
+            facecolor="#f5f8fc",
+            edgecolor="#cfd9e6",
+            linewidth=1,
+            zorder=1
+        ))
 
-        ax.text(lane_x + 0.015, lane_y + lane_h - 0.060, avg_label,
-                transform=ax.transAxes, fontsize=8.8, color="#5c6773", va="top", zorder=2)
-        ax.text(lane_x + 0.015, lane_y + lane_h - 0.090, avg_value,
-                transform=ax.transAxes, fontsize=12, fontweight="bold",
-                color="#222222", va="top", zorder=2)
+        ax.text(
+            lane_x + 0.015, lane_y + lane_h - 0.025, title,
+            transform=ax.transAxes,
+            fontsize=11,
+            fontweight="bold",
+            color="#1d4f91",
+            va="top",
+            zorder=2
+        )
 
-        ax.text(lane_x + 0.015, lane_y + lane_h - 0.130, f"{label1}: {value1}",
-                transform=ax.transAxes, fontsize=8.6, color="#222222", va="top", zorder=2)
-        ax.text(lane_x + 0.015, lane_y + lane_h - 0.185, f"{label2}: {value2}",
-                transform=ax.transAxes, fontsize=8.6, color="#222222", va="top", zorder=2)
+        ax.text(
+            lane_x + 0.015, lane_y + lane_h - 0.060, avg_label,
+            transform=ax.transAxes,
+            fontsize=8.8,
+            color="#5c6773",
+            va="top",
+            zorder=2
+        )
+        ax.text(
+            lane_x + 0.015, lane_y + lane_h - 0.092, avg_value,
+            transform=ax.transAxes,
+            fontsize=12,
+            fontweight="bold",
+            color="#222222",
+            va="top",
+            zorder=2
+        )
+
+        ax.text(
+            lane_x + 0.015, lane_y + lane_h - 0.132, f"{label1}: {value1}",
+            transform=ax.transAxes,
+            fontsize=8.4,
+            color="#222222",
+            va="top",
+            zorder=2
+        )
+        ax.text(
+            lane_x + 0.015, lane_y + lane_h - 0.190, f"{label2}: {value2}",
+            transform=ax.transAxes,
+            fontsize=8.4,
+            color="#222222",
+            va="top",
+            zorder=2
+        )
 
     # Table
-    table_bbox = [0.03, 0.04, 0.94, 0.58]
+    table_bbox = [0.03, 0.04, 0.94, 0.56]
     table = ax.table(
         cellText=export_df.values,
         colLabels=export_df.columns,
@@ -577,16 +626,20 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
     table.set_fontsize(9.8)
     table.scale(1, 1.45)
 
-    # Table styling
     ncols = len(export_df.columns)
 
+    # Header styling
     for col_idx in range(ncols):
         header_cell = table[0, col_idx]
         header_cell.set_text_props(weight="bold", color="white")
         header_cell.set_facecolor("#2d6cb5")
         header_cell.set_edgecolor("#d7dee8")
 
+    # Row + cell styling
     for row_idx in range(1, len(export_df) + 1):
+        original_row = store_df_sorted.iloc[row_idx - 1]
+
+        # base row color
         for col_idx in range(ncols):
             cell = table[row_idx, col_idx]
             cell.set_edgecolor("#dfe5ec")
@@ -595,10 +648,44 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             else:
                 cell.set_facecolor("white")
 
-        original_row = store_df_sorted.iloc[row_idx - 1]
+        # highlight all-green row
         if original_row["_all_green"]:
             for col_idx in range(ncols):
                 table[row_idx, col_idx].set_facecolor("#e8f5e9")
+
+        # metric cell coloring overrides
+        # Tablet %
+        tablet_cell = table[row_idx, 1]
+        tablet_val = original_row["Tablet %"]
+        if pd.notna(tablet_val):
+            if tablet_val >= 0.90:
+                tablet_cell.set_facecolor("#dff5e6")
+            elif tablet_val >= 0.80:
+                tablet_cell.set_facecolor("#fff6d6")
+            else:
+                tablet_cell.set_facecolor("#fde2e0")
+
+        # Turn Time
+        turn_cell = table[row_idx, 2]
+        turn_val = original_row["Turn Time"]
+        if pd.notna(turn_val):
+            if turn_val <= 40:
+                turn_cell.set_facecolor("#dff5e6")
+            elif turn_val <= 45:
+                turn_cell.set_facecolor("#fff6d6")
+            else:
+                turn_cell.set_facecolor("#fde2e0")
+
+        # Beverage
+        bev_cell = table[row_idx, 3]
+        bev_val = original_row["Dine In Bev %"]
+        if pd.notna(bev_val):
+            if bev_val >= 0.19:
+                bev_cell.set_facecolor("#dff5e6")
+            elif bev_val >= 0.18:
+                bev_cell.set_facecolor("#fff6d6")
+            else:
+                bev_cell.set_facecolor("#fde2e0")
 
     return fig
 
