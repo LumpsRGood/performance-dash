@@ -139,14 +139,6 @@ def safe_mean(series):
     return s.mean()
 
 
-def format_metric_value(label, value):
-    if pd.isna(value):
-        return "No data"
-    if "Tablet" in label or "Beverage" in label:
-        return f"{value:.2%}"
-    return f"{value:.2f}"
-
-
 def format_single_rank_line(df, column, label, ascending=False):
     working = df[["Server", column]].copy()
     working[column] = pd.to_numeric(working[column], errors="coerce")
@@ -158,9 +150,7 @@ def format_single_rank_line(df, column, label, ascending=False):
     best_value = working[column].min() if ascending else working[column].max()
     tied = working[working[column] == best_value].sort_values("Server")
 
-    people = " • ".join(
-        [f"{row['Server']} ({format_metric_value(label, row[column])})" for _, row in tied.iterrows()]
-    )
+    people = " • ".join(tied["Server"].tolist())
 
     return f"**{label}:** {people}"
 
@@ -499,24 +489,24 @@ if tablet_files or turn_files or beverage_files:
                     "Avg Tablet %",
                     "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}"
                 )
-                st.markdown(format_single_rank_line(store_df, "Tablet %", "Top Tablet", ascending=False))
-                st.markdown(format_single_rank_line(store_df, "Tablet %", "Bottom Tablet", ascending=True))
+                st.markdown(format_single_rank_line(store_df, "Tablet %", "Top", ascending=False))
+                st.markdown(format_single_rank_line(store_df, "Tablet %", "Bottom", ascending=True))
 
             with turn_col:
                 st.metric(
                     "Avg Turn",
                     "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}"
                 )
-                st.markdown(format_single_rank_line(store_df, "Turn Time", "Best Turn", ascending=True))
-                st.markdown(format_single_rank_line(store_df, "Turn Time", "Slowest Turn", ascending=False))
+                st.markdown(format_single_rank_line(store_df, "Turn Time", "Best", ascending=True))
+                st.markdown(format_single_rank_line(store_df, "Turn Time", "Slowest", ascending=False))
 
             with bev_col:
                 st.metric(
                     "Avg Dine In Bev %",
                     "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}"
                 )
-                st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Top Beverage", ascending=False))
-                st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Bottom Beverage", ascending=True))
+                st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Top", ascending=False))
+                st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Bottom", ascending=True))
 
             def tablet_metric_with_dot(x):
                 if pd.isna(x):
@@ -544,18 +534,11 @@ if tablet_files or turn_files or beverage_files:
             ).reset_index(drop=True)
 
             display_df = store_df_sorted.copy()
-            display_df["Greens"] = display_df["_greens_count"].apply(
-                lambda x: "🟢🟢🟢" if x == 3 else
-                          "🟢🟢" if x == 2 else
-                          "🟢" if x == 1 else
-                          ""
-            )
             display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
             display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
             display_df["Dine In Bev %"] = display_df["Dine In Bev %"].apply(beverage_metric_with_dot)
 
             display_df = display_df[[
-                "Greens",
                 "Server",
                 "Tablet %",
                 "Turn Time",
