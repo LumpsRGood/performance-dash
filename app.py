@@ -492,6 +492,41 @@ def beverage_score_icon(x):
         return "🟡"
     return "🔴"
 
+def tablet_box_color(x):
+    if pd.isna(x):
+        return "#f5f8fc"  # neutral
+    if x >= 0.90:
+        return "#6fdc8c"
+    elif x >= 0.80:
+        return "#ffe066"
+    return "#ff6b6b"
+
+
+def turn_box_color(x):
+    if pd.isna(x):
+        return "#f5f8fc"
+    if x <= 40:
+        return "#6fdc8c"
+    elif x <= 45:
+        return "#ffe066"
+    return "#ff6b6b"
+
+
+def beverage_box_color(x):
+    if pd.isna(x):
+        return "#f5f8fc"
+    if x >= 0.19:
+        return "#6fdc8c"
+    elif x >= 0.18:
+        return "#ffe066"
+    return "#ff6b6b"
+
+
+def box_text_color(fill_color):
+    if fill_color in ["#ff6b6b", "#1d4f91"]:
+        return "white"
+    return "#222222"
+
 
 def greens_count(row):
     count = 0
@@ -582,7 +617,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
     lane_gap = 0.03
     lane_xs = [0.03, 0.03 + lane_w + lane_gap, 0.03 + (lane_w + lane_gap) * 2]
 
-    lane_data = [
+        lane_data = [
         (
             "TABLET",
             "Avg Tablet %",
@@ -591,6 +626,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             wrap_names(tablet_top, width=18),
             "Bottom",
             wrap_names(tablet_bottom, width=18),
+            tablet_box_color(avg_tablet),
         ),
         (
             "TURN",
@@ -600,6 +636,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             wrap_names(turn_best, width=18),
             "Slowest",
             wrap_names(turn_slowest, width=18),
+            turn_box_color(avg_turn),
         ),
         (
             "BEVERAGE",
@@ -609,16 +646,18 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             wrap_names(bev_top, width=18),
             "Bottom",
             wrap_names(bev_bottom, width=18),
+            beverage_box_color(avg_bev),
         ),
     ]
 
     for lane_x, lane in zip(lane_xs, lane_data):
-        title, avg_label, avg_value, label1, value1, label2, value2 = lane
+        title, avg_label, avg_value, label1, value1, label2, value2, fill_color = lane
+        text_color = box_text_color(fill_color)
 
         ax.add_patch(Rectangle(
             (lane_x, lane_y), lane_w, lane_h,
             transform=ax.transAxes,
-            facecolor="#f5f8fc",
+            facecolor=fill_color,
             edgecolor="#cfd9e6",
             linewidth=1,
             zorder=1
@@ -629,7 +668,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             transform=ax.transAxes,
             fontsize=11,
             fontweight="bold",
-            color="#1d4f91",
+            color=text_color,
             va="top",
             zorder=2
         )
@@ -638,16 +677,17 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             lane_x + 0.015, lane_y + lane_h - 0.060, avg_label,
             transform=ax.transAxes,
             fontsize=8.8,
-            color="#5c6773",
+            color=text_color,
             va="top",
             zorder=2
         )
+
         ax.text(
             lane_x + 0.015, lane_y + lane_h - 0.092, avg_value,
             transform=ax.transAxes,
             fontsize=12,
             fontweight="bold",
-            color="#222222",
+            color=text_color,
             va="top",
             zorder=2
         )
@@ -656,19 +696,19 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             lane_x + 0.015, lane_y + lane_h - 0.132, f"{label1}: {value1}",
             transform=ax.transAxes,
             fontsize=8.4,
-            color="#222222",
-            va="top",
-            zorder=2
-        )
-        ax.text(
-            lane_x + 0.015, lane_y + lane_h - 0.190, f"{label2}: {value2}",
-            transform=ax.transAxes,
-            fontsize=8.4,
-            color="#222222",
+            color=text_color,
             va="top",
             zorder=2
         )
 
+        ax.text(
+            lane_x + 0.015, lane_y + lane_h - 0.190, f"{label2}: {value2}",
+            transform=ax.transAxes,
+            fontsize=8.4,
+            color=text_color,
+            va="top",
+            zorder=2
+        )
     table_bbox = [0.03, 0.04, 0.94, 0.56]
     table = ax.table(
         cellText=export_df.values,
