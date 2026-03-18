@@ -617,7 +617,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
     lane_gap = 0.03
     lane_xs = [0.03, 0.03 + lane_w + lane_gap, 0.03 + (lane_w + lane_gap) * 2]
 
-        lane_data = [
+    lane_data = [
         (
             "TABLET",
             "Avg Tablet %",
