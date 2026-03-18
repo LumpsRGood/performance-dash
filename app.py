@@ -61,6 +61,14 @@ def clean_name(name):
         name = f"{parts[1].strip()} {parts[0].strip()}"
     return " ".join(name.split()).title()
 
+def strip_employee_id(name):
+    if pd.isna(name):
+        return ""
+    name = str(name).strip()
+    # Removes prefixes like "296007 - "
+    name = re.sub(r"^\d+\s*-\s*", "", name)
+    return name
+
 
 def pick_col(df, keywords):
     for col in df.columns:
@@ -388,7 +396,7 @@ def process_beverage_file(file):
             register_store_label(store_num, label)
 
     df["Store"] = raw_locations.apply(extract_store_number)
-    df["Server"] = df[col_server].apply(clean_name)
+    df["Server"] = df[col_server].apply(strip_employee_id).apply(clean_name)
     df["Dine In Bev %"] = pd.to_numeric(df[col_bev], errors="coerce")
 
     df = df.dropna(subset=["Store", "Dine In Bev %"]).copy()
