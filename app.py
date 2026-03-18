@@ -81,15 +81,20 @@ def extract_store_number(text):
     if pd.isna(text):
         return None
 
-    text = str(text)
+    text = str(text).strip()
 
-    # Preferred match for cells like "IHOP #3231"
-    match = re.search(r'IHOP\s*#\s*(\d{4})', text, flags=re.IGNORECASE)
+    # 1. Best match: IHOP #560 or IHOP #3231
+    match = re.search(r'IHOP\s*#\s*(\d{3,4})\b', text, flags=re.IGNORECASE)
     if match:
         return match.group(1)
 
-    # Fallback: any standalone 4-digit number
-    match = re.search(r'\b(\d{4})\b', text)
+    # 2. Exact cell value is just a 3- or 4-digit store number
+    match = re.fullmatch(r'\s*(\d{3,4})(?:\.0)?\s*', text)
+    if match:
+        return match.group(1)
+
+    # 3. Site / Store labels like "Site 560" or "Store: 3231"
+    match = re.search(r'(?:site|id site|store)\D{0,10}(\d{3,4})\b', text, flags=re.IGNORECASE)
     if match:
         return match.group(1)
 
@@ -99,8 +104,12 @@ def extract_store_number(text):
 def extract_store_label_from_text(text):
     text = str(text).strip()
 
-    # Example: "4463 - Decatur"
-    match = re.search(r"\b(\d{4})\b\s*[-–:]?\s*(.+)", text)
+    # Match things like:
+    # 560 - Hoover
+    # 3231 - Prattville
+    # IHOP #560 Hoover
+    # IHOP #3231 Prattville
+    match = re.search(r'(?:IHOP\s*#\s*)?(\d{3,4})\b\s*[-–:]?\s*(.+)', text, flags=re.IGNORECASE)
     if match:
         store_num = match.group(1)
         remainder = match.group(2).strip()
