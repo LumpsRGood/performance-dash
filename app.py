@@ -61,11 +61,11 @@ def clean_name(name):
         name = f"{parts[1].strip()} {parts[0].strip()}"
     return " ".join(name.split()).title()
 
+
 def strip_employee_id(name):
     if pd.isna(name):
         return ""
     name = str(name).strip()
-    # Removes prefixes like "296007 - "
     name = re.sub(r"^\d+\s*-\s*", "", name)
     return name
 
@@ -85,6 +85,21 @@ def normalize_store_label(label):
     return label
 
 
+def normalize_store_number(store):
+    if pd.isna(store) or store is None:
+        return None
+
+    store = str(store).strip()
+    if store == "":
+        return None
+
+    match = re.search(r"(\d{3,4})", store)
+    if not match:
+        return store
+
+    return str(int(match.group(1)))
+
+
 def extract_store_number(text):
     if pd.isna(text):
         return None
@@ -94,22 +109,22 @@ def extract_store_number(text):
     # 1. Best match: IHOP #560 or IHOP #3231
     match = re.search(r'IHOP\s*#\s*(\d{3,4})\b', text, flags=re.IGNORECASE)
     if match:
-        return match.group(1)
+        return normalize_store_number(match.group(1))
 
     # 2. Leading store label like "491 - Lanada Road" or "5656 - Mebane TC"
     match = re.match(r'^\s*(\d{3,4})\s*[-–:]', text)
     if match:
-        return match.group(1)
+        return normalize_store_number(match.group(1))
 
     # 3. Exact cell value is just a 3- or 4-digit store number
     match = re.fullmatch(r'\s*(\d{3,4})(?:\.0)?\s*', text)
     if match:
-        return match.group(1)
+        return normalize_store_number(match.group(1))
 
     # 4. Site / Store labels like "Site 560" or "Store: 3231"
     match = re.search(r'(?:site|id site|store)\D{0,10}(\d{3,4})\b', text, flags=re.IGNORECASE)
     if match:
-        return match.group(1)
+        return normalize_store_number(match.group(1))
 
     return None
 
@@ -124,10 +139,9 @@ def extract_store_label_from_text(text):
     # IHOP #5656 Mebane TC
     match = re.match(r'^\s*(?:IHOP\s*#\s*)?(\d{3,4})\b\s*[-–:]?\s*(.+)', text, flags=re.IGNORECASE)
     if match:
-        store_num = match.group(1)
+        store_num = normalize_store_number(match.group(1))
         remainder = match.group(2).strip()
 
-        # Ignore junk footer rows
         if remainder and "copyright" not in remainder.lower():
             return store_num, normalize_store_label(f"{store_num} - {remainder}")
 
@@ -135,15 +149,16 @@ def extract_store_label_from_text(text):
 
 
 def register_store_label(store_num, label):
+    store_num = normalize_store_number(store_num)
     if store_num and label:
-        DYNAMIC_STORE_LABELS[str(store_num)] = normalize_store_label(label)
+        DYNAMIC_STORE_LABELS[store_num] = normalize_store_label(label)
 
 
 def get_store_label(store_num):
+    store_num = normalize_store_number(store_num)
+
     if not store_num or store_num == "Unknown":
         return "Unknown"
-
-    store_num = str(store_num)
 
     if store_num in STORE_MAP:
         return f"{store_num} - {STORE_MAP[store_num]}"
@@ -244,12 +259,11 @@ def process_tablet_file(file):
     df["Server"] = df["Server"].apply(clean_name)
     df["Store"] = df[col_store].apply(extract_store_number)
 
-    # Fallback to filename only if row-level store is missing
     fallback_store = extract_store_from_filename(file)
     if fallback_store:
         df["Store"] = df["Store"].fillna(fallback_store)
 
-    df["Store"] = df["Store"].fillna("Unknown")
+    df["Store"] = df["Store"].apply(normalize_store_number).fillna("Unknown")
 
     return df[["Store", "Server", "Device Orders", "Base"]]
 
@@ -338,12 +352,11 @@ def process_turn_file(file):
     eat["Server"] = eat[col_server].apply(clean_name)
     eat["Store"] = eat[col_store].apply(extract_store_number)
 
-    # Fallback to filename only if row-level store is missing
     fallback_store = extract_store_from_filename(file)
     if fallback_store:
         eat["Store"] = eat["Store"].fillna(fallback_store)
 
-    eat["Store"] = eat["Store"].fillna("Unknown")
+    eat["Store"] = eat["Store"].apply(normalize_store_number).fillna("Unknown")
 
     return eat[["Store", "Server", "Turn Time"]]
 
@@ -368,7 +381,6 @@ def process_all_turn_files(files):
 
 # =========================
 # Beverage Processing
-# Beverage file = source of truth for store labels
 # =========================
 def process_beverage_file(file):
     file.seek(0)
@@ -396,13 +408,12 @@ def process_beverage_file(file):
 
     raw_locations = df[col_store].astype(str)
 
-    # Register pretty labels from beverage file
     for loc in raw_locations.dropna().unique():
         store_num, label = extract_store_label_from_text(loc)
         if store_num and label:
             register_store_label(store_num, label)
 
-    df["Store"] = raw_locations.apply(extract_store_number)
+    df["Store"] = raw_locations.apply(extract_store_number).apply(normalize_store_number)
     df["Server"] = df[col_server].apply(strip_employee_id).apply(clean_name)
     df["Dine In Bev %"] = pd.to_numeric(df[col_bev], errors="coerce")
 
@@ -757,6 +768,7 @@ if tablet_files or turn_files or beverage_files:
 
     if not combined.empty:
         combined["Store"] = combined["Store"].fillna("Unknown").astype(str).str.strip()
+        combined["Store"] = combined["Store"].apply(normalize_store_number).fillna("Unknown")
         combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
 
         combined = combined[combined["Server"] != ""].copy()
