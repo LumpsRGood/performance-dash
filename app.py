@@ -1,6 +1,7 @@
 import re
 import textwrap
 from io import BytesIO
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -24,6 +25,22 @@ STORE_MAP = {
 
 # Dynamic labels pulled from Rosnet beverage file
 DYNAMIC_STORE_LABELS = {}
+ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
+BADGE_ICON_PATHS = {
+    "TOP PERFORMER": ICON_DIR / "top_performer.png",
+    "ALL GREEN": ICON_DIR / "all_green.png",
+    "COACH": ICON_DIR / "coach.png",
+    "SLOWEST TURN": ICON_DIR / "slowest_turn.png",
+}
+
+
+@st.cache_resource
+def load_badge_icons():
+    icons = {}
+    for label, path in BADGE_ICON_PATHS.items():
+        if path.exists():
+            icons[label] = plt.imread(path)
+    return icons
 
 # =========================
 # Upload Section
@@ -843,11 +860,7 @@ def create_whatsapp_store_card(store_label, store_df):
             slowest_idx = slow_turn.idxmax()
             badge_by_row.setdefault(slowest_idx, ("SLOWEST TURN", "#ef4444", "white"))
 
-    export_df["Tag"] = [
-        badge_by_row.get(original_idx, ("", None, None))[0]
-        for original_idx in visible_df.index
-    ]
-    export_df = export_df[["Server", "Tag", "Turn Time", "Dine In Bev %", "PPA"]].copy()
+    export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
 
     row_count = len(export_df)
     fig_height = max(9.4, 4.9 + (row_count * 0.42))
@@ -951,12 +964,12 @@ def create_whatsapp_store_card(store_label, store_df):
         cellLoc="left",
         loc="center",
         bbox=table_bbox,
-        colWidths=[0.31, 0.13, 0.18, 0.20, 0.18],
+        colWidths=[0.36, 0.18, 0.24, 0.22],
     )
 
     table.auto_set_font_size(False)
     table.set_fontsize(9.8)
-    table.scale(1, 1.82)
+    table.scale(1, 1.92)
 
     ncols = len(export_df.columns)
 
@@ -977,23 +990,7 @@ def create_whatsapp_store_card(store_label, store_df):
             else:
                 cell.set_facecolor("white")
 
-        tag_cell = table[row_idx, 1]
-        tag_label, tag_fill_color, tag_text_color = badge_by_row.get(original_row.name, ("", None, None))
-        tag_cell.set_text_props(weight="bold", color="#111827", ha="center")
-        if tag_label:
-            tag_cell.get_text().set_color(tag_text_color)
-            tag_cell.get_text().set_fontsize(6.6)
-            tag_cell.get_text().set_bbox(
-                dict(
-                    boxstyle="round,pad=0.28,rounding_size=0.35",
-                    facecolor=tag_fill_color,
-                    edgecolor="none",
-                )
-            )
-        else:
-            tag_cell.get_text().set_text("")
-
-        turn_cell = table[row_idx, 2]
+        turn_cell = table[row_idx, 1]
         turn_val = original_row["Turn Time"]
         if pd.notna(turn_val):
             if turn_val <= 40:
@@ -1006,7 +1003,7 @@ def create_whatsapp_store_card(store_label, store_df):
                 turn_cell.set_facecolor("#ff6b6b")
                 turn_cell.set_text_props(weight="bold", color="white")
 
-        bev_cell = table[row_idx, 3]
+        bev_cell = table[row_idx, 2]
         bev_val = original_row["Dine In Bev %"]
         if pd.notna(bev_val):
             if bev_val >= 0.19:
@@ -1019,7 +1016,7 @@ def create_whatsapp_store_card(store_label, store_df):
                 bev_cell.set_facecolor("#ff6b6b")
                 bev_cell.set_text_props(weight="bold", color="white")
 
-        ppa_cell = table[row_idx, 4]
+        ppa_cell = table[row_idx, 3]
         ppa_val = original_row["PPA"]
         if pd.notna(ppa_val):
             if ppa_val >= 21:
@@ -1031,6 +1028,33 @@ def create_whatsapp_store_card(store_label, store_df):
             else:
                 ppa_cell.set_facecolor("#ff6b6b")
                 ppa_cell.set_text_props(weight="bold", color="white")
+
+    fig.canvas.draw()
+    badge_icons = load_badge_icons()
+    for row_idx in range(1, len(export_df) + 1):
+        server_cell = table[row_idx, 0]
+        server_cell.get_text().set_fontsize(9.3)
+        original_row = visible_df.iloc[row_idx - 1]
+        badge = badge_by_row.get(original_row.name)
+        if not badge:
+            continue
+
+        label = badge[0]
+        icon = badge_icons.get(label)
+        if icon is None:
+            continue
+
+        x = server_cell.get_x()
+        y = server_cell.get_y()
+        w = server_cell.get_width()
+        h = server_cell.get_height()
+        icon_ax = ax.inset_axes(
+            [x + w * 0.80, y + h * 0.16, w * 0.11, h * 0.68],
+            transform=ax.transAxes,
+            zorder=4,
+        )
+        icon_ax.imshow(icon)
+        icon_ax.set_axis_off()
 
     return fig
 
