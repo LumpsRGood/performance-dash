@@ -624,6 +624,9 @@ def process_all_ppa_files(files):
     if not all_rows:
         return pd.DataFrame(columns=["Store", "Server", "PPA", "PPA Weight", "Net Sales"])
 
+    if len(all_rows) == 1:
+        return all_rows[0].copy()
+
     combined = pd.concat(all_rows, ignore_index=True)
 
     def aggregate_ppa(group):
