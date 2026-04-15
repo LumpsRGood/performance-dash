@@ -863,7 +863,13 @@ def create_whatsapp_store_card(store_label, store_df):
     export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
 
     row_count = len(export_df)
-    fig_height = max(9.4, 4.9 + (row_count * 0.42))
+    legend_items = [
+        ("TOP PERFORMER", "top_performer.png"),
+        ("ALL GREEN", "all_green.png"),
+        ("COACH", "coach.png"),
+        ("SLOWEST TURN", "slowest_turn.png"),
+    ]
+    fig_height = max(9.8, 5.2 + (row_count * 0.42))
     fig, ax = plt.subplots(figsize=(8.2, fig_height))
     fig.patch.set_facecolor("white")
     ax.set_axis_off()
@@ -957,7 +963,7 @@ def create_whatsapp_store_card(store_label, store_df):
             va="center",
             zorder=2
         )
-    table_bbox = [0.08, 0.09, 0.84, 0.49]
+    table_bbox = [0.08, 0.16, 0.84, 0.42]
     table = ax.table(
         cellText=export_df.values,
         colLabels=export_df.columns,
@@ -989,6 +995,11 @@ def create_whatsapp_store_card(store_label, store_df):
                 cell.set_facecolor("#fbfcfe")
             else:
                 cell.set_facecolor("white")
+
+        server_cell = table[row_idx, 0]
+        server_cell.get_text().set_fontsize(9.3)
+        server_cell.get_text().set_ha("left")
+        server_cell.get_text().set_x(0.03)
 
         turn_cell = table[row_idx, 1]
         turn_val = original_row["Turn Time"]
@@ -1033,7 +1044,6 @@ def create_whatsapp_store_card(store_label, store_df):
     badge_icons = load_badge_icons()
     for row_idx in range(1, len(export_df) + 1):
         server_cell = table[row_idx, 0]
-        server_cell.get_text().set_fontsize(9.3)
         original_row = visible_df.iloc[row_idx - 1]
         badge = badge_by_row.get(original_row.name)
         if not badge:
@@ -1049,12 +1059,36 @@ def create_whatsapp_store_card(store_label, store_df):
         w = server_cell.get_width()
         h = server_cell.get_height()
         icon_ax = ax.inset_axes(
-            [x + w * 0.80, y + h * 0.16, w * 0.11, h * 0.68],
+            [x + w * 0.865, y + h * 0.18, w * 0.09, h * 0.64],
             transform=ax.transAxes,
             zorder=4,
         )
         icon_ax.imshow(icon)
         icon_ax.set_axis_off()
+
+    legend_y = 0.075
+    legend_positions = [0.12, 0.35, 0.58, 0.79]
+    for legend_x, (label, filename) in zip(legend_positions, legend_items):
+        icon = badge_icons.get(label)
+        if icon is not None:
+            icon_ax = ax.inset_axes(
+                [legend_x - 0.03, legend_y - 0.014, 0.028, 0.028],
+                transform=ax.transAxes,
+                zorder=4,
+            )
+            icon_ax.imshow(icon)
+            icon_ax.set_axis_off()
+        ax.text(
+            legend_x,
+            legend_y,
+            label.title(),
+            transform=ax.transAxes,
+            fontsize=9.2,
+            color="#334155",
+            ha="left",
+            va="center",
+            zorder=4,
+        )
 
     return fig
 
