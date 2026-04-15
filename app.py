@@ -843,11 +843,11 @@ def create_whatsapp_store_card(store_label, store_df):
             slowest_idx = slow_turn.idxmax()
             badge_by_row.setdefault(slowest_idx, ("SLOWEST TURN", "#ef4444", "white"))
 
-    export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
-    export_df["Server"] = [
-        f"{name}\n " if original_idx in badge_by_row else name
-        for original_idx, name in zip(visible_df.index, export_df["Server"])
+    export_df["Tag"] = [
+        badge_by_row.get(original_idx, ("", None, None))[0]
+        for original_idx in visible_df.index
     ]
+    export_df = export_df[["Server", "Tag", "Turn Time", "Dine In Bev %", "PPA"]].copy()
 
     row_count = len(export_df)
     fig_height = max(9.4, 4.9 + (row_count * 0.42))
@@ -951,12 +951,12 @@ def create_whatsapp_store_card(store_label, store_df):
         cellLoc="left",
         loc="center",
         bbox=table_bbox,
-        colWidths=[0.36, 0.20, 0.24, 0.20],
+        colWidths=[0.31, 0.13, 0.18, 0.20, 0.18],
     )
 
     table.auto_set_font_size(False)
     table.set_fontsize(9.8)
-    table.scale(1, 2.08)
+    table.scale(1, 1.82)
 
     ncols = len(export_df.columns)
 
@@ -977,7 +977,23 @@ def create_whatsapp_store_card(store_label, store_df):
             else:
                 cell.set_facecolor("white")
 
-        turn_cell = table[row_idx, 1]
+        tag_cell = table[row_idx, 1]
+        tag_label, tag_fill_color, tag_text_color = badge_by_row.get(original_row.name, ("", None, None))
+        tag_cell.set_text_props(weight="bold", color="#111827", ha="center")
+        if tag_label:
+            tag_cell.get_text().set_color(tag_text_color)
+            tag_cell.get_text().set_fontsize(6.6)
+            tag_cell.get_text().set_bbox(
+                dict(
+                    boxstyle="round,pad=0.28,rounding_size=0.35",
+                    facecolor=tag_fill_color,
+                    edgecolor="none",
+                )
+            )
+        else:
+            tag_cell.get_text().set_text("")
+
+        turn_cell = table[row_idx, 2]
         turn_val = original_row["Turn Time"]
         if pd.notna(turn_val):
             if turn_val <= 40:
@@ -990,7 +1006,7 @@ def create_whatsapp_store_card(store_label, store_df):
                 turn_cell.set_facecolor("#ff6b6b")
                 turn_cell.set_text_props(weight="bold", color="white")
 
-        bev_cell = table[row_idx, 2]
+        bev_cell = table[row_idx, 3]
         bev_val = original_row["Dine In Bev %"]
         if pd.notna(bev_val):
             if bev_val >= 0.19:
@@ -1003,7 +1019,7 @@ def create_whatsapp_store_card(store_label, store_df):
                 bev_cell.set_facecolor("#ff6b6b")
                 bev_cell.set_text_props(weight="bold", color="white")
 
-        ppa_cell = table[row_idx, 3]
+        ppa_cell = table[row_idx, 4]
         ppa_val = original_row["PPA"]
         if pd.notna(ppa_val):
             if ppa_val >= 21:
@@ -1015,44 +1031,6 @@ def create_whatsapp_store_card(store_label, store_df):
             else:
                 ppa_cell.set_facecolor("#ff6b6b")
                 ppa_cell.set_text_props(weight="bold", color="white")
-
-    for row_idx in range(1, len(export_df) + 1):
-        server_cell = table[row_idx, 0]
-        server_text = server_cell.get_text()
-        server_text.set_va("top")
-        server_text.set_fontsize(8.8)
-        server_text.set_linespacing(1.35)
-        server_text.set_position((0.02, 0.70))
-
-    fig.canvas.draw()
-    for row_idx in range(1, len(export_df) + 1):
-        original_row = visible_df.iloc[row_idx - 1]
-        badge = badge_by_row.get(original_row.name)
-        if not badge:
-            continue
-        label, fill_color, text_color = badge
-        server_cell = table[row_idx, 0]
-        x = server_cell.get_x()
-        y = server_cell.get_y()
-        w = server_cell.get_width()
-        h = server_cell.get_height()
-        ax.text(
-            x + 0.04,
-            y + h * 0.07,
-            label,
-            transform=ax.transAxes,
-            ha="left",
-            va="center",
-            fontsize=5.8,
-            fontweight="bold",
-            color=text_color,
-            bbox=dict(
-                boxstyle="round,pad=0.20,rounding_size=0.25",
-                facecolor=fill_color,
-                edgecolor="none",
-            ),
-            zorder=3,
-        )
 
     return fig
 
