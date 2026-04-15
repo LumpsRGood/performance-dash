@@ -813,6 +813,38 @@ def create_whatsapp_store_card(store_label, store_df):
 
     export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
 
+    badge_df = visible_df.copy()
+    badge_df["_turn_green"] = badge_df["Turn Time"].apply(is_turn_green)
+    badge_df["_bev_green"] = badge_df["Dine In Bev %"].apply(is_bev_green)
+    badge_df["_ppa_green"] = badge_df["PPA"].apply(is_ppa_green) if ppa_available else True
+    badge_df["_pass_count"] = (
+        badge_df["_turn_green"].astype(int)
+        + badge_df["_bev_green"].astype(int)
+        + badge_df["_ppa_green"].astype(int)
+    )
+
+    badge_by_row = {}
+    if not badge_df.empty:
+        top_idx = badge_df.sort_values(
+            by=["_pass_count", "PPA", "Dine In Bev %", "Turn Time", "Server"],
+            ascending=[False, False, False, True, True],
+        ).index[0]
+        badge_by_row[top_idx] = ("TOP PERFORMER", "#8b5cf6", "white")
+
+        for idx in badge_df.index[
+            badge_df["_turn_green"] & badge_df["_bev_green"] & badge_df["_ppa_green"]
+        ]:
+            badge_by_row.setdefault(idx, ("ALL GREEN", "#22c55e", "#111827"))
+
+        coach_mask = (~badge_df["_turn_green"]) & (~badge_df["_bev_green"]) & (~badge_df["_ppa_green"])
+        for idx in badge_df.index[coach_mask]:
+            badge_by_row.setdefault(idx, ("COACH", "#facc15", "#111827"))
+
+        slow_turn = pd.to_numeric(badge_df["Turn Time"], errors="coerce")
+        if slow_turn.notna().any():
+            slowest_idx = slow_turn.idxmax()
+            badge_by_row.setdefault(slowest_idx, ("SLOWEST TURN", "#ef4444", "white"))
+
     row_count = len(export_df)
     fig_height = max(9.4, 4.9 + (row_count * 0.42))
     fig, ax = plt.subplots(figsize=(8.2, fig_height))
@@ -914,7 +946,8 @@ def create_whatsapp_store_card(store_label, store_df):
         colLabels=export_df.columns,
         cellLoc="left",
         loc="center",
-        bbox=table_bbox
+        bbox=table_bbox,
+        colWidths=[0.36, 0.20, 0.24, 0.20],
     )
 
     table.auto_set_font_size(False)
@@ -978,6 +1011,36 @@ def create_whatsapp_store_card(store_label, store_df):
             else:
                 ppa_cell.set_facecolor("#ff6b6b")
                 ppa_cell.set_text_props(weight="bold", color="white")
+
+    fig.canvas.draw()
+    for row_idx in range(1, len(export_df) + 1):
+        original_row = visible_df.iloc[row_idx - 1]
+        badge = badge_by_row.get(original_row.name)
+        if not badge:
+            continue
+        label, fill_color, text_color = badge
+        server_cell = table[row_idx, 0]
+        x = server_cell.get_x()
+        y = server_cell.get_y()
+        w = server_cell.get_width()
+        h = server_cell.get_height()
+        ax.text(
+            x + w - 0.006,
+            y + h / 2,
+            label,
+            transform=ax.transAxes,
+            ha="right",
+            va="center",
+            fontsize=6.0,
+            fontweight="bold",
+            color=text_color,
+            bbox=dict(
+                boxstyle="round,pad=0.18,rounding_size=0.25",
+                facecolor=fill_color,
+                edgecolor="none",
+            ),
+            zorder=3,
+        )
 
     return fig
 
