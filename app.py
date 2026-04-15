@@ -867,10 +867,10 @@ def create_whatsapp_store_card(store_label, store_df):
 
     row_count = len(export_df)
     legend_items = [
-        ("TOP PERFORMER", "top_performer.png"),
-        ("ALL GREEN", "all_green.png"),
-        ("COACH", "coach.png"),
-        ("SLOWEST TURN", "slowest_turn.png"),
+        ("TOP PERFORMER", "Top Performer"),
+        ("ALL GREEN", "All Green"),
+        ("COACH", "Needs Coaching"),
+        ("SLOWEST TURN", "Slowest Turn"),
     ]
     fig_height = max(9.8, 5.2 + (row_count * 0.42))
     fig, ax = plt.subplots(figsize=(8.2, fig_height))
@@ -1071,7 +1071,7 @@ def create_whatsapp_store_card(store_label, store_df):
 
     legend_y = 0.075
     legend_positions = [0.12, 0.35, 0.58, 0.79]
-    for legend_x, (label, filename) in zip(legend_positions, legend_items):
+    for legend_x, (label, display_label) in zip(legend_positions, legend_items):
         icon = badge_icons.get(label)
         if icon is not None:
             icon_ax = ax.inset_axes(
@@ -1084,7 +1084,7 @@ def create_whatsapp_store_card(store_label, store_df):
         ax.text(
             legend_x,
             legend_y,
-            label.title(),
+            display_label,
             transform=ax.transAxes,
             fontsize=9.2,
             color="#334155",
@@ -1092,6 +1092,18 @@ def create_whatsapp_store_card(store_label, store_df):
             va="center",
             zorder=4,
         )
+
+    ax.text(
+        0.50,
+        0.045,
+        "Needs Coaching = missed Turn, Dine In Bev %, and PPA",
+        transform=ax.transAxes,
+        fontsize=8.4,
+        color="#64748b",
+        ha="center",
+        va="center",
+        zorder=4,
+    )
 
     return fig
 
