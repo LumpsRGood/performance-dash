@@ -1022,7 +1022,7 @@ def create_whatsapp_store_card(store_label, store_df):
         server_text.set_va("top")
         server_text.set_fontsize(8.8)
         server_text.set_linespacing(1.35)
-        server_text.set_position((0.02, 0.88))
+        server_text.set_position((0.02, 0.70))
 
     fig.canvas.draw()
     for row_idx in range(1, len(export_df) + 1):
@@ -1038,7 +1038,7 @@ def create_whatsapp_store_card(store_label, store_df):
         h = server_cell.get_height()
         ax.text(
             x + 0.04,
-            y + h * 0.12,
+            y + h * 0.07,
             label,
             transform=ax.transAxes,
             ha="left",
