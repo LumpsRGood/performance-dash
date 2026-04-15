@@ -69,6 +69,13 @@ def clean_name(name):
     return " ".join(name.split()).title()
 
 
+def is_support_staff(name):
+    name = str(name or "").strip().lower()
+    if not name:
+        return False
+    return "olo" in name or "online ordering" in name
+
+
 def strip_employee_id(name):
     if pd.isna(name):
         return ""
@@ -766,18 +773,19 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
     avg_bev = weighted_mean(store_df_sorted, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df_sorted["Dine In Bev %"]))
     avg_ppa = weighted_mean(store_df_sorted, "PPA", "PPA Weight", default=safe_mean(store_df_sorted["PPA"]))
 
-    total_servers = len(store_df_sorted)
-    ppa_available = store_df_sorted["PPA"].notna().any()
+    visible_df = store_df_sorted[~store_df_sorted["Server"].apply(is_support_staff)].copy()
+    total_servers = len(visible_df)
+    ppa_available = visible_df["PPA"].notna().any()
     all_green_mask = (
-        store_df_sorted["Turn Time"].apply(is_turn_green)
-        & store_df_sorted["Dine In Bev %"].apply(is_bev_green)
+        visible_df["Turn Time"].apply(is_turn_green)
+        & visible_df["Dine In Bev %"].apply(is_bev_green)
     )
     if ppa_available:
-        all_green_mask = all_green_mask & store_df_sorted["PPA"].apply(is_ppa_green)
-    all_green = store_df_sorted[all_green_mask]
+        all_green_mask = all_green_mask & visible_df["PPA"].apply(is_ppa_green)
+    all_green = visible_df[all_green_mask]
     all_green_count = len(all_green)
 
-    export_df = store_df_sorted.copy()
+    export_df = visible_df.copy()
 
     def export_turn_text(x):
         if pd.isna(x):
@@ -917,7 +925,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         header_cell.set_edgecolor("#d7dee8")
 
     for row_idx in range(1, len(export_df) + 1):
-        original_row = store_df_sorted.iloc[row_idx - 1]
+        original_row = export_df.iloc[row_idx - 1]
 
         for col_idx in range(ncols):
             cell = table[row_idx, col_idx]
@@ -1005,6 +1013,7 @@ if tablet_files or turn_files or beverage_files or ppa_files:
 
         combined = combined[combined["Server"] != ""].copy()
         combined = combined[~combined["Server"].str.lower().str.contains("total", na=False)].copy()
+        combined["_support_staff"] = combined["Server"].apply(is_support_staff)
 
         if "Tablet %" not in combined.columns:
             combined["Tablet %"] = pd.NA
@@ -1015,10 +1024,13 @@ if tablet_files or turn_files or beverage_files or ppa_files:
         if "PPA" not in combined.columns:
             combined["PPA"] = pd.NA
 
-        ppa_available = combined["PPA"].notna().any()
+        visible_combined = combined[~combined["_support_staff"]].copy()
+        ppa_available = visible_combined["PPA"].notna().any()
 
         combined["_all_green"] = combined.apply(
             lambda row: (
+                (not row["_support_staff"])
+                and
                 is_tablet_green(row["Tablet %"])
                 and is_turn_green(row["Turn Time"])
                 and is_bev_green(row["Dine In Bev %"])
@@ -1043,6 +1055,7 @@ if tablet_files or turn_files or beverage_files or ppa_files:
                 continue
 
             store_label = get_store_label(store)
+            store_display_df = store_df[~store_df["_support_staff"]].copy()
             st.markdown(f"### 📍 {store_label}")
 
             avg_tablet = weighted_mean(store_df, "Tablet %", "Tablet Weight", default=safe_mean(store_df["Tablet %"]))
@@ -1057,32 +1070,32 @@ if tablet_files or turn_files or beverage_files or ppa_files:
                     "Avg Tablet %",
                     "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}"
                 )
-                st.markdown(format_single_rank_line(store_df, "Tablet %", "Top", ascending=False))
-                st.markdown(format_single_rank_line(store_df, "Tablet %", "Bottom", ascending=True))
+                st.markdown(format_single_rank_line(store_display_df, "Tablet %", "Top", ascending=False))
+                st.markdown(format_single_rank_line(store_display_df, "Tablet %", "Bottom", ascending=True))
 
             with turn_col:
                 st.metric(
                     "Avg Turn",
                     "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}"
                 )
-                st.markdown(format_single_rank_line(store_df, "Turn Time", "Best", ascending=True))
-                st.markdown(format_single_rank_line(store_df, "Turn Time", "Slowest", ascending=False))
+                st.markdown(format_single_rank_line(store_display_df, "Turn Time", "Best", ascending=True))
+                st.markdown(format_single_rank_line(store_display_df, "Turn Time", "Slowest", ascending=False))
 
             with bev_col:
                 st.metric(
                     "Avg Dine In Bev %",
                     "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}"
                 )
-                st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Top", ascending=False))
-                st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Bottom", ascending=True))
+                st.markdown(format_single_rank_line(store_display_df, "Dine In Bev %", "Top", ascending=False))
+                st.markdown(format_single_rank_line(store_display_df, "Dine In Bev %", "Bottom", ascending=True))
 
             with ppa_col:
                 st.metric(
                     "Avg PPA",
                     "No data" if pd.isna(avg_ppa) else f"${avg_ppa:.2f}"
                 )
-                st.markdown(format_single_rank_line(store_df, "PPA", "Top", ascending=False))
-                st.markdown(format_single_rank_line(store_df, "PPA", "Bottom", ascending=True))
+                st.markdown(format_single_rank_line(store_display_df, "PPA", "Top", ascending=False))
+                st.markdown(format_single_rank_line(store_display_df, "PPA", "Bottom", ascending=True))
 
             def tablet_metric_with_dot(x):
                 if pd.isna(x):
@@ -1104,7 +1117,7 @@ if tablet_files or turn_files or beverage_files or ppa_files:
                     return ""
                 return f"{ppa_score_icon(x)} ${x:.2f}"
 
-            store_df_sorted = store_df.copy()
+            store_df_sorted = store_display_df.copy()
             store_df_sorted["_tablet_sort"] = pd.to_numeric(store_df_sorted["Tablet %"], errors="coerce").fillna(-1)
             store_df_sorted["_turn_sort"] = pd.to_numeric(store_df_sorted["Turn Time"], errors="coerce").fillna(999999)
             store_df_sorted["_bev_sort"] = pd.to_numeric(store_df_sorted["Dine In Bev %"], errors="coerce").fillna(-1)
