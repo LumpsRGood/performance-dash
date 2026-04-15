@@ -811,8 +811,6 @@ def create_whatsapp_store_card(store_label, store_df):
     export_df["Dine In Bev %"] = export_df["Dine In Bev %"].apply(export_bev_text)
     export_df["PPA"] = export_df["PPA"].apply(export_ppa_text)
 
-    export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
-
     badge_df = visible_df.copy()
     badge_df["_turn_green"] = badge_df["Turn Time"].apply(is_turn_green)
     badge_df["_bev_green"] = badge_df["Dine In Bev %"].apply(is_bev_green)
@@ -844,6 +842,12 @@ def create_whatsapp_store_card(store_label, store_df):
         if slow_turn.notna().any():
             slowest_idx = slow_turn.idxmax()
             badge_by_row.setdefault(slowest_idx, ("SLOWEST TURN", "#ef4444", "white"))
+
+    export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
+    export_df["Server"] = [
+        f"{name}\n " if original_idx in badge_by_row else name
+        for original_idx, name in zip(visible_df.index, export_df["Server"])
+    ]
 
     row_count = len(export_df)
     fig_height = max(9.4, 4.9 + (row_count * 0.42))
@@ -952,7 +956,7 @@ def create_whatsapp_store_card(store_label, store_df):
 
     table.auto_set_font_size(False)
     table.set_fontsize(9.8)
-    table.scale(1, 1.70)
+    table.scale(1, 1.92)
 
     ncols = len(export_df.columns)
 
@@ -1016,7 +1020,7 @@ def create_whatsapp_store_card(store_label, store_df):
         server_cell = table[row_idx, 0]
         server_text = server_cell.get_text()
         server_text.set_va("top")
-        server_text.set_position((0.02, 0.72))
+        server_text.set_position((0.02, 0.82))
 
     fig.canvas.draw()
     for row_idx in range(1, len(export_df) + 1):
@@ -1031,8 +1035,8 @@ def create_whatsapp_store_card(store_label, store_df):
         w = server_cell.get_width()
         h = server_cell.get_height()
         ax.text(
-            x + 0.18,
-            y + h * 0.28,
+            x + 0.04,
+            y + h * 0.18,
             label,
             transform=ax.transAxes,
             ha="left",
