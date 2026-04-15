@@ -49,6 +49,13 @@ beverage_files = st.file_uploader(
 )
 st.caption("Use the Rosnet Contest Detail export for Dine-In Beverage % by employee.")
 
+ppa_files = st.file_uploader(
+    "Upload Employee Sales Statistics XLSX",
+    type=["xlsx", "xls", "csv"],
+    accept_multiple_files=True,
+)
+st.caption("Use the Employee Sales Statistics export for employee-level PPA.")
+
 # =========================
 # Helpers
 # =========================
@@ -129,6 +136,31 @@ def extract_store_number(text):
     return None
 
 
+def resolve_store_from_text(text):
+    store_num = extract_store_number(text)
+    if store_num:
+        return store_num
+
+    label = normalize_store_label(str(text)).lower()
+    if not label:
+        return None
+
+    for store_num, store_label in DYNAMIC_STORE_LABELS.items():
+        stripped = re.sub(r"^\d{3,4}\s*[-–:]\s*", "", store_label).strip().lower()
+        if label == stripped:
+            return normalize_store_number(store_num)
+
+    aliases = {
+        "prattville": "3231",
+        "3231- prattville": "3231",
+        "eastern blvd": "4445",
+        "montgomery": "4445",
+        "oxford": "4456",
+        "decatur": "4463",
+    }
+    return aliases.get(label)
+
+
 def extract_store_label_from_text(text):
     text = str(text).strip()
 
@@ -160,11 +192,11 @@ def get_store_label(store_num):
     if not store_num or store_num == "Unknown":
         return "Unknown"
 
-    if store_num in STORE_MAP:
-        return f"{store_num} - {STORE_MAP[store_num]}"
-
     if store_num in DYNAMIC_STORE_LABELS:
         return DYNAMIC_STORE_LABELS[store_num]
+
+    if store_num in STORE_MAP:
+        return f"{store_num} - {STORE_MAP[store_num]}"
 
     return f"{store_num} - Unknown"
 
@@ -493,6 +525,101 @@ def process_all_beverage_files(files):
 
 
 # =========================
+# PPA Processing
+# =========================
+def process_ppa_file(file):
+    file.seek(0)
+    if file.name.lower().endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file, header=4)
+
+    df.columns = [str(col).strip() for col in df.columns]
+
+    col_store = pick_col(df, ["location"])
+    col_server = pick_col(df, ["employee name", "employee"])
+    col_net_sales = pick_col(df, ["net sales"])
+    col_covers = pick_col(df, ["covers"])
+    col_ppa = pick_col(df, ["ppa"])
+
+    missing = []
+    if not col_store:
+        missing.append("Location")
+    if not col_server:
+        missing.append("Employee Name")
+    if not col_net_sales:
+        missing.append("Net Sales")
+    if not col_covers:
+        missing.append("Covers")
+    if not col_ppa:
+        missing.append("PPA")
+
+    if missing:
+        raise ValueError(f"{file.name}: missing required Employee Sales Statistics columns: {', '.join(missing)}")
+
+    raw_locations = df[col_store].astype(str)
+    for loc in raw_locations.dropna().unique():
+        store_num, label = extract_store_label_from_text(loc)
+        if store_num and label:
+            register_store_label(store_num, label)
+
+    df["Store"] = raw_locations.apply(resolve_store_from_text).apply(normalize_store_number)
+    df["Server"] = df[col_server].apply(clean_name)
+    df["Net Sales"] = pd.to_numeric(df[col_net_sales], errors="coerce")
+    df["PPA Weight"] = pd.to_numeric(df[col_covers], errors="coerce")
+    reported_ppa = pd.to_numeric(df[col_ppa], errors="coerce")
+    df["PPA"] = (df["Net Sales"] / df["PPA Weight"]).where(df["PPA Weight"] > 0, reported_ppa)
+
+    df = df.dropna(subset=["Store", "PPA"]).copy()
+    df["Store"] = df["Store"].astype(str).str.strip()
+    df["Server"] = df["Server"].fillna("").astype(str).str.strip()
+
+    df = df[df["Store"] != ""].copy()
+    df = df[df["Server"] != ""].copy()
+    df = df[~df["Server"].str.lower().str.contains("total", na=False)].copy()
+
+    return df[["Store", "Server", "PPA", "PPA Weight", "Net Sales"]]
+
+
+def process_all_ppa_files(files):
+    all_rows = []
+
+    for file in files:
+        try:
+            all_rows.append(process_ppa_file(file))
+        except Exception as e:
+            st.error(f"Employee Sales Statistics file '{file.name}' failed: {e}")
+
+    if not all_rows:
+        return pd.DataFrame(columns=["Store", "Server", "PPA", "PPA Weight", "Net Sales"])
+
+    combined = pd.concat(all_rows, ignore_index=True)
+
+    def aggregate_ppa(group):
+        net_sales = pd.to_numeric(group["Net Sales"], errors="coerce")
+        covers = pd.to_numeric(group["PPA Weight"], errors="coerce")
+        valid = net_sales.notna() & covers.notna() & (covers > 0)
+
+        if valid.any():
+            total_sales = net_sales[valid].sum()
+            total_covers = covers[valid].sum()
+            ppa = total_sales / total_covers if total_covers > 0 else pd.NA
+        else:
+            total_sales = pd.NA
+            total_covers = pd.NA
+            ppa_values = pd.to_numeric(group["PPA"], errors="coerce")
+            ppa = ppa_values.dropna().mean() if ppa_values.notna().any() else pd.NA
+
+        return pd.Series({
+            "PPA": ppa,
+            "PPA Weight": total_covers,
+            "Net Sales": total_sales,
+        })
+
+    return combined.groupby(["Store", "Server"], as_index=False).apply(aggregate_ppa, include_groups=False)
+
+
+# =========================
 # Score Helpers
 # =========================
 def is_tablet_green(x):
@@ -505,6 +632,10 @@ def is_turn_green(x):
 
 def is_bev_green(x):
     return pd.notna(x) and x >= 0.19
+
+
+def is_ppa_green(x):
+    return pd.notna(x) and x >= 21
 
 
 def tablet_score_icon(x):
@@ -533,6 +664,16 @@ def beverage_score_icon(x):
     if x >= 0.19:
         return "🟢"
     elif x >= 0.18:
+        return "🟡"
+    return "🔴"
+
+
+def ppa_score_icon(x):
+    if pd.isna(x):
+        return ""
+    if x >= 21:
+        return "🟢"
+    elif x >= 20:
         return "🟡"
     return "🔴"
 
@@ -566,6 +707,16 @@ def beverage_box_color(x):
     return "#ff6b6b"
 
 
+def ppa_box_color(x):
+    if pd.isna(x):
+        return "#f5f8fc"
+    if x >= 21:
+        return "#6fdc8c"
+    elif x >= 20:
+        return "#ffe066"
+    return "#ff6b6b"
+
+
 def box_text_color(fill_color):
     if fill_color in ["#ff6b6b", "#1d4f91"]:
         return "white"
@@ -580,6 +731,8 @@ def greens_count(row):
         count += 1
     if is_bev_green(row["Dine In Bev %"]):
         count += 1
+    if "PPA" in row and is_ppa_green(row["PPA"]):
+        count += 1
     return count
 
 
@@ -587,24 +740,22 @@ def greens_count(row):
 # WhatsApp Card Export
 # =========================
 def create_whatsapp_store_card(store_label, store_df_sorted):
-    avg_tablet = weighted_mean(store_df_sorted, "Tablet %", "Tablet Weight", default=safe_mean(store_df_sorted["Tablet %"]))
     avg_turn = weighted_mean(store_df_sorted, "Turn Time", "Turn Check Count", default=safe_mean(store_df_sorted["Turn Time"]))
     avg_bev = weighted_mean(store_df_sorted, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df_sorted["Dine In Bev %"]))
+    avg_ppa = weighted_mean(store_df_sorted, "PPA", "PPA Weight", default=safe_mean(store_df_sorted["PPA"]))
 
     total_servers = len(store_df_sorted)
-    all_green = store_df_sorted[
-        store_df_sorted["Tablet %"].apply(is_tablet_green)
-        & store_df_sorted["Turn Time"].apply(is_turn_green)
+    ppa_available = store_df_sorted["PPA"].notna().any()
+    all_green_mask = (
+        store_df_sorted["Turn Time"].apply(is_turn_green)
         & store_df_sorted["Dine In Bev %"].apply(is_bev_green)
-    ]
+    )
+    if ppa_available:
+        all_green_mask = all_green_mask & store_df_sorted["PPA"].apply(is_ppa_green)
+    all_green = store_df_sorted[all_green_mask]
     all_green_count = len(all_green)
 
     export_df = store_df_sorted.copy()
-
-    def export_tablet_text(x):
-        if pd.isna(x):
-            return ""
-        return f"{x:.2%}"
 
     def export_turn_text(x):
         if pd.isna(x):
@@ -616,11 +767,16 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             return ""
         return f"{x:.2%}"
 
-    export_df["Tablet %"] = export_df["Tablet %"].apply(export_tablet_text)
+    def export_ppa_text(x):
+        if pd.isna(x):
+            return ""
+        return f"${x:.2f}"
+
     export_df["Turn Time"] = export_df["Turn Time"].apply(export_turn_text)
     export_df["Dine In Bev %"] = export_df["Dine In Bev %"].apply(export_bev_text)
+    export_df["PPA"] = export_df["PPA"].apply(export_ppa_text)
 
-    export_df = export_df[["Server", "Tablet %", "Turn Time", "Dine In Bev %"]].copy()
+    export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
 
     row_count = len(export_df)
     fig_height = max(9.4, 4.9 + (row_count * 0.42))
@@ -662,11 +818,6 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
 
     lane_data = [
         (
-            "TABLET",
-            "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}",
-            tablet_box_color(avg_tablet),
-        ),
-        (
             "TURN",
             "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}",
             turn_box_color(avg_turn),
@@ -675,6 +826,11 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             "BEVERAGE",
             "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}",
             beverage_box_color(avg_bev),
+        ),
+        (
+            "PPA",
+            "No data" if pd.isna(avg_ppa) else f"${avg_ppa:.2f}",
+            ppa_box_color(avg_ppa),
         ),
         (
             "ALL GREEN",
@@ -749,20 +905,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
             else:
                 cell.set_facecolor("white")
 
-        tablet_cell = table[row_idx, 1]
-        tablet_val = original_row["Tablet %"]
-        if pd.notna(tablet_val):
-            if tablet_val >= 0.90:
-                tablet_cell.set_facecolor("#6fdc8c")
-                tablet_cell.set_text_props(weight="bold", color="black")
-            elif tablet_val >= 0.80:
-                tablet_cell.set_facecolor("#ffe066")
-                tablet_cell.set_text_props(weight="bold", color="black")
-            else:
-                tablet_cell.set_facecolor("#ff6b6b")
-                tablet_cell.set_text_props(weight="bold", color="white")
-
-        turn_cell = table[row_idx, 2]
+        turn_cell = table[row_idx, 1]
         turn_val = original_row["Turn Time"]
         if pd.notna(turn_val):
             if turn_val <= 40:
@@ -775,7 +918,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
                 turn_cell.set_facecolor("#ff6b6b")
                 turn_cell.set_text_props(weight="bold", color="white")
 
-        bev_cell = table[row_idx, 3]
+        bev_cell = table[row_idx, 2]
         bev_val = original_row["Dine In Bev %"]
         if pd.notna(bev_val):
             if bev_val >= 0.19:
@@ -788,16 +931,30 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
                 bev_cell.set_facecolor("#ff6b6b")
                 bev_cell.set_text_props(weight="bold", color="white")
 
+        ppa_cell = table[row_idx, 3]
+        ppa_val = original_row["PPA"]
+        if pd.notna(ppa_val):
+            if ppa_val >= 21:
+                ppa_cell.set_facecolor("#6fdc8c")
+                ppa_cell.set_text_props(weight="bold", color="black")
+            elif ppa_val >= 20:
+                ppa_cell.set_facecolor("#ffe066")
+                ppa_cell.set_text_props(weight="bold", color="black")
+            else:
+                ppa_cell.set_facecolor("#ff6b6b")
+                ppa_cell.set_text_props(weight="bold", color="white")
+
     return fig
 
 
 # =========================
 # Main Processing
 # =========================
-if tablet_files or turn_files or beverage_files:
+if tablet_files or turn_files or beverage_files or ppa_files:
     tablet_df = process_all_tablet_files(tablet_files or [])
     turn_df = process_all_turn_files(turn_files or [])
     beverage_df = process_all_beverage_files(beverage_files or [])
+    ppa_df = process_all_ppa_files(ppa_files or [])
 
     combined = pd.DataFrame()
 
@@ -814,6 +971,11 @@ if tablet_files or turn_files or beverage_files:
             combined, beverage_df, on=["Store", "Server"], how="outer"
         )
 
+    if not ppa_df.empty:
+        combined = ppa_df.copy() if combined.empty else pd.merge(
+            combined, ppa_df, on=["Store", "Server"], how="outer"
+        )
+
     if not combined.empty:
         combined["Store"] = combined["Store"].fillna("Unknown").astype(str).str.strip()
         combined["Store"] = combined["Store"].apply(normalize_store_number).fillna("Unknown")
@@ -828,12 +990,17 @@ if tablet_files or turn_files or beverage_files:
             combined["Turn Time"] = pd.NA
         if "Dine In Bev %" not in combined.columns:
             combined["Dine In Bev %"] = pd.NA
+        if "PPA" not in combined.columns:
+            combined["PPA"] = pd.NA
+
+        ppa_available = combined["PPA"].notna().any()
 
         combined["_all_green"] = combined.apply(
             lambda row: (
                 is_tablet_green(row["Tablet %"])
                 and is_turn_green(row["Turn Time"])
                 and is_bev_green(row["Dine In Bev %"])
+                and (is_ppa_green(row["PPA"]) if ppa_available else True)
             ),
             axis=1,
         )
@@ -859,8 +1026,9 @@ if tablet_files or turn_files or beverage_files:
             avg_tablet = weighted_mean(store_df, "Tablet %", "Tablet Weight", default=safe_mean(store_df["Tablet %"]))
             avg_turn = weighted_mean(store_df, "Turn Time", "Turn Check Count", default=safe_mean(store_df["Turn Time"]))
             avg_bev = weighted_mean(store_df, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df["Dine In Bev %"]))
+            avg_ppa = weighted_mean(store_df, "PPA", "PPA Weight", default=safe_mean(store_df["PPA"]))
 
-            tablet_col, turn_col, bev_col = st.columns(3)
+            tablet_col, turn_col, bev_col, ppa_col = st.columns(4)
 
             with tablet_col:
                 st.metric(
@@ -886,6 +1054,14 @@ if tablet_files or turn_files or beverage_files:
                 st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Top", ascending=False))
                 st.markdown(format_single_rank_line(store_df, "Dine In Bev %", "Bottom", ascending=True))
 
+            with ppa_col:
+                st.metric(
+                    "Avg PPA",
+                    "No data" if pd.isna(avg_ppa) else f"${avg_ppa:.2f}"
+                )
+                st.markdown(format_single_rank_line(store_df, "PPA", "Top", ascending=False))
+                st.markdown(format_single_rank_line(store_df, "PPA", "Bottom", ascending=True))
+
             def tablet_metric_with_dot(x):
                 if pd.isna(x):
                     return ""
@@ -901,26 +1077,34 @@ if tablet_files or turn_files or beverage_files:
                     return ""
                 return f"{beverage_score_icon(x)} {x:.2%}"
 
+            def ppa_metric_with_dot(x):
+                if pd.isna(x):
+                    return ""
+                return f"{ppa_score_icon(x)} ${x:.2f}"
+
             store_df_sorted = store_df.copy()
             store_df_sorted["_tablet_sort"] = pd.to_numeric(store_df_sorted["Tablet %"], errors="coerce").fillna(-1)
             store_df_sorted["_turn_sort"] = pd.to_numeric(store_df_sorted["Turn Time"], errors="coerce").fillna(999999)
             store_df_sorted["_bev_sort"] = pd.to_numeric(store_df_sorted["Dine In Bev %"], errors="coerce").fillna(-1)
+            store_df_sorted["_ppa_sort"] = pd.to_numeric(store_df_sorted["PPA"], errors="coerce").fillna(-1)
 
             store_df_sorted = store_df_sorted.sort_values(
-                by=["_greens_count", "_tablet_sort", "_turn_sort", "_bev_sort", "Server"],
-                ascending=[False, False, True, False, True]
+                by=["_greens_count", "_tablet_sort", "_turn_sort", "_bev_sort", "_ppa_sort", "Server"],
+                ascending=[False, False, True, False, False, True]
             ).reset_index(drop=True)
 
             display_df = store_df_sorted.copy()
             display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
             display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
             display_df["Dine In Bev %"] = display_df["Dine In Bev %"].apply(beverage_metric_with_dot)
+            display_df["PPA"] = display_df["PPA"].apply(ppa_metric_with_dot)
 
             display_df = display_df[[
                 "Server",
                 "Tablet %",
                 "Turn Time",
                 "Dine In Bev %",
+                "PPA",
             ]]
 
             def highlight_all_green(row):
@@ -948,4 +1132,4 @@ if tablet_files or turn_files or beverage_files:
     else:
         st.warning("No valid data could be processed from the uploaded files.")
 else:
-    st.info("Upload your Tray Orders CSV(s), Tray Checks CSV(s), and/or Rosnet Contest Detail XLSX to begin.")
+    st.info("Upload your Tray Orders CSV(s), Tray Checks CSV(s), Rosnet Contest Detail XLSX, and/or Employee Sales Statistics XLSX to begin.")
