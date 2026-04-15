@@ -981,10 +981,17 @@ def create_whatsapp_store_card(store_label, store_df):
 # Main Processing
 # =========================
 if tablet_files or turn_files or beverage_files or ppa_files:
+    if beverage_files and len(beverage_files) > 1:
+        st.warning("Multiple Contest Detail files uploaded. Using only the most recent file for Dine-In Bev %.")
+    if ppa_files and len(ppa_files) > 1:
+        st.warning("Multiple Employee Sales Statistics files uploaded. Using only the most recent file for PPA.")
+
     tablet_df = process_all_tablet_files(tablet_files or [])
     turn_df = process_all_turn_files(turn_files or [])
-    beverage_df = process_all_beverage_files(beverage_files or [])
-    ppa_df = process_all_ppa_files(ppa_files or [])
+    beverage_input = beverage_files[-1:] if beverage_files else []
+    ppa_input = ppa_files[-1:] if ppa_files else []
+    beverage_df = process_all_beverage_files(beverage_input)
+    ppa_df = process_all_ppa_files(ppa_input)
 
     combined = pd.DataFrame()
 
