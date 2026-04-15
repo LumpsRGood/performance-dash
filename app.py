@@ -796,18 +796,21 @@ def create_whatsapp_store_card(store_label, store_df):
     avg_ppa = weighted_mean(store_df, "PPA", "PPA Weight", default=safe_mean(store_df["PPA"]))
 
     visible_df = store_df[~store_df["Server"].apply(is_support_staff)].copy()
-    total_servers = len(visible_df)
-    ppa_available = visible_df["PPA"].notna().any()
+    card_df = visible_df[
+        visible_df["Turn Time"].notna() & visible_df["Dine In Bev %"].notna()
+    ].copy()
+    total_servers = len(card_df)
+    ppa_available = card_df["PPA"].notna().any()
     all_green_mask = (
-        visible_df["Turn Time"].apply(is_turn_green)
-        & visible_df["Dine In Bev %"].apply(is_bev_green)
+        card_df["Turn Time"].apply(is_turn_green)
+        & card_df["Dine In Bev %"].apply(is_bev_green)
     )
     if ppa_available:
-        all_green_mask = all_green_mask & visible_df["PPA"].apply(is_ppa_green)
-    all_green = visible_df[all_green_mask]
+        all_green_mask = all_green_mask & card_df["PPA"].apply(is_ppa_green)
+    all_green = card_df[all_green_mask]
     all_green_count = len(all_green)
 
-    export_df = visible_df.copy()
+    export_df = card_df.copy()
 
     def export_turn_text(x):
         if pd.isna(x):
@@ -828,7 +831,7 @@ def create_whatsapp_store_card(store_label, store_df):
     export_df["Dine In Bev %"] = export_df["Dine In Bev %"].apply(export_bev_text)
     export_df["PPA"] = export_df["PPA"].apply(export_ppa_text)
 
-    badge_df = visible_df.copy()
+    badge_df = card_df.copy()
     badge_df["_turn_green"] = badge_df["Turn Time"].apply(is_turn_green)
     badge_df["_bev_green"] = badge_df["Dine In Bev %"].apply(is_bev_green)
     badge_df["_ppa_green"] = badge_df["PPA"].apply(is_ppa_green) if ppa_available else True
@@ -858,7 +861,7 @@ def create_whatsapp_store_card(store_label, store_df):
         slow_turn = pd.to_numeric(badge_df["Turn Time"], errors="coerce")
         if slow_turn.notna().any():
             slowest_idx = slow_turn.idxmax()
-            badge_by_row.setdefault(slowest_idx, ("SLOWEST TURN", "#ef4444", "white"))
+            badge_by_row[slowest_idx] = ("SLOWEST TURN", "#ef4444", "white")
 
     export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
 
@@ -986,7 +989,7 @@ def create_whatsapp_store_card(store_label, store_df):
         header_cell.set_edgecolor("#d7dee8")
 
     for row_idx in range(1, len(export_df) + 1):
-        original_row = visible_df.iloc[row_idx - 1]
+        original_row = card_df.iloc[row_idx - 1]
 
         for col_idx in range(ncols):
             cell = table[row_idx, col_idx]
@@ -1044,7 +1047,7 @@ def create_whatsapp_store_card(store_label, store_df):
     badge_icons = load_badge_icons()
     for row_idx in range(1, len(export_df) + 1):
         server_cell = table[row_idx, 0]
-        original_row = visible_df.iloc[row_idx - 1]
+        original_row = card_df.iloc[row_idx - 1]
         badge = badge_by_row.get(original_row.name)
         if not badge:
             continue
