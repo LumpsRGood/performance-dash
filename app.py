@@ -768,12 +768,12 @@ def greens_count(row):
 # =========================
 # WhatsApp Card Export
 # =========================
-def create_whatsapp_store_card(store_label, store_df_sorted):
-    avg_turn = weighted_mean(store_df_sorted, "Turn Time", "Turn Check Count", default=safe_mean(store_df_sorted["Turn Time"]))
-    avg_bev = weighted_mean(store_df_sorted, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df_sorted["Dine In Bev %"]))
-    avg_ppa = weighted_mean(store_df_sorted, "PPA", "PPA Weight", default=safe_mean(store_df_sorted["PPA"]))
+def create_whatsapp_store_card(store_label, store_df):
+    avg_turn = weighted_mean(store_df, "Turn Time", "Turn Check Count", default=safe_mean(store_df["Turn Time"]))
+    avg_bev = weighted_mean(store_df, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df["Dine In Bev %"]))
+    avg_ppa = weighted_mean(store_df, "PPA", "PPA Weight", default=safe_mean(store_df["PPA"]))
 
-    visible_df = store_df_sorted[~store_df_sorted["Server"].apply(is_support_staff)].copy()
+    visible_df = store_df[~store_df["Server"].apply(is_support_staff)].copy()
     total_servers = len(visible_df)
     ppa_available = visible_df["PPA"].notna().any()
     all_green_mask = (
@@ -925,7 +925,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         header_cell.set_edgecolor("#d7dee8")
 
     for row_idx in range(1, len(export_df) + 1):
-        original_row = store_df_sorted.iloc[row_idx - 1]
+        original_row = visible_df.iloc[row_idx - 1]
 
         for col_idx in range(ncols):
             cell = table[row_idx, col_idx]
@@ -1152,7 +1152,7 @@ if tablet_files or turn_files or beverage_files or ppa_files:
 
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-            card_fig = create_whatsapp_store_card(store_label, store_df_sorted)
+            card_fig = create_whatsapp_store_card(store_label, store_df)
             card_buf = fig_to_png_bytes(card_fig)
             safe_store_label = store_label.replace(" - ", "_").replace(" ", "_")
 
