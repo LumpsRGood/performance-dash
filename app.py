@@ -956,7 +956,7 @@ def create_whatsapp_store_card(store_label, store_df):
 
     table.auto_set_font_size(False)
     table.set_fontsize(9.8)
-    table.scale(1, 1.92)
+    table.scale(1, 2.08)
 
     ncols = len(export_df.columns)
 
@@ -1020,7 +1020,9 @@ def create_whatsapp_store_card(store_label, store_df):
         server_cell = table[row_idx, 0]
         server_text = server_cell.get_text()
         server_text.set_va("top")
-        server_text.set_position((0.02, 0.82))
+        server_text.set_fontsize(8.8)
+        server_text.set_linespacing(1.35)
+        server_text.set_position((0.02, 0.88))
 
     fig.canvas.draw()
     for row_idx in range(1, len(export_df) + 1):
@@ -1036,16 +1038,16 @@ def create_whatsapp_store_card(store_label, store_df):
         h = server_cell.get_height()
         ax.text(
             x + 0.04,
-            y + h * 0.18,
+            y + h * 0.12,
             label,
             transform=ax.transAxes,
             ha="left",
             va="center",
-            fontsize=6.0,
+            fontsize=5.8,
             fontweight="bold",
             color=text_color,
             bbox=dict(
-                boxstyle="round,pad=0.18,rounding_size=0.25",
+                boxstyle="round,pad=0.20,rounding_size=0.25",
                 facecolor=fill_color,
                 edgecolor="none",
             ),
