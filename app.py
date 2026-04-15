@@ -925,7 +925,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         header_cell.set_edgecolor("#d7dee8")
 
     for row_idx in range(1, len(export_df) + 1):
-        original_row = export_df.iloc[row_idx - 1]
+        original_row = store_df_sorted.iloc[row_idx - 1]
 
         for col_idx in range(ncols):
             cell = table[row_idx, col_idx]
