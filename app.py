@@ -872,7 +872,7 @@ def create_whatsapp_store_card(store_label, store_df):
         ("COACH", "Needs Coaching"),
         ("SLOWEST TURN", "Slowest Turn"),
     ]
-    fig_height = max(9.8, 5.2 + (row_count * 0.42))
+    fig_height = max(9.1, 4.8 + (row_count * 0.40))
     fig, ax = plt.subplots(figsize=(8.2, fig_height))
     fig.patch.set_facecolor("white")
     ax.set_axis_off()
@@ -966,7 +966,7 @@ def create_whatsapp_store_card(store_label, store_df):
             va="center",
             zorder=2
         )
-    table_bbox = [0.08, 0.16, 0.84, 0.42]
+    table_bbox = [0.08, 0.18, 0.84, 0.44]
     table = ax.table(
         cellText=export_df.values,
         colLabels=export_df.columns,
@@ -1069,7 +1069,7 @@ def create_whatsapp_store_card(store_label, store_df):
         icon_ax.imshow(icon)
         icon_ax.set_axis_off()
 
-    legend_y = 0.075
+    legend_y = 0.105
     legend_positions = [0.12, 0.35, 0.58, 0.79]
     for legend_x, (label, display_label) in zip(legend_positions, legend_items):
         icon = badge_icons.get(label)
@@ -1095,7 +1095,7 @@ def create_whatsapp_store_card(store_label, store_df):
 
     ax.text(
         0.50,
-        0.045,
+        0.072,
         "Needs Coaching = missed Turn, Dine In Bev %, and PPA",
         transform=ax.transAxes,
         fontsize=8.4,
