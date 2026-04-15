@@ -86,6 +86,24 @@ def pick_col(df, keywords):
     return None
 
 
+def read_excel_with_header_search(file, required_terms, default_header=4, max_header_row=10):
+    file.seek(0)
+    raw = pd.read_excel(file, header=None)
+
+    for header_idx in range(min(max_header_row, len(raw))):
+        row_values = [str(v).strip() for v in raw.iloc[header_idx].tolist()]
+        normalized = [v.lower() for v in row_values]
+        if all(any(term in cell for cell in normalized) for term in required_terms):
+            columns = raw.iloc[header_idx].tolist()
+            data = raw.iloc[header_idx + 1 :].copy()
+            data.columns = columns
+            data = data.dropna(how="all")
+            return data
+
+    file.seek(0)
+    return pd.read_excel(file, header=default_header)
+
+
 def normalize_store_label(label):
     label = str(label).strip()
     label = re.sub(r"\s+", " ", label)
@@ -532,7 +550,11 @@ def process_ppa_file(file):
     if file.name.lower().endswith(".csv"):
         df = pd.read_csv(file)
     else:
-        df = pd.read_excel(file, header=4)
+        df = read_excel_with_header_search(
+            file,
+            required_terms=["location", "employee name", "net sales", "covers", "ppa"],
+            default_header=4,
+        )
 
     df.columns = [str(col).strip() for col in df.columns]
 
