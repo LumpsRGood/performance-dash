@@ -180,6 +180,22 @@ def safe_mean(series):
     return s.mean()
 
 
+def weighted_mean(df, value_col, weight_col, default=pd.NA):
+    if value_col not in df.columns or weight_col not in df.columns:
+        return default
+
+    working = df[[value_col, weight_col]].copy()
+    working[value_col] = pd.to_numeric(working[value_col], errors="coerce")
+    working[weight_col] = pd.to_numeric(working[weight_col], errors="coerce")
+    working = working.dropna(subset=[value_col, weight_col])
+    working = working[working[weight_col] > 0]
+
+    if working.empty:
+        return default
+
+    return (working[value_col] * working[weight_col]).sum() / working[weight_col].sum()
+
+
 def format_single_rank_line(df, column, label, ascending=False):
     working = df[["Server", column]].copy()
     working[column] = pd.to_numeric(working[column], errors="coerce")
@@ -304,7 +320,9 @@ def process_all_tablet_files(files):
         (grouped["Tablet Sales"] + grouped["POS Sales"])
     ).fillna(0)
 
-    return grouped.reset_index()[["Store", "Server", "Tablet %"]]
+    grouped["Tablet Weight"] = grouped["Tablet Sales"] + grouped["POS Sales"]
+
+    return grouped.reset_index()[["Store", "Server", "Tablet %", "Tablet Weight"]]
 
 
 # =========================
@@ -371,10 +389,15 @@ def process_all_turn_files(files):
             st.error(f"Tray Checks file '{file.name}' failed: {e}")
 
     if not all_rows:
-        return pd.DataFrame(columns=["Store", "Server", "Turn Time"])
+        return pd.DataFrame(columns=["Store", "Server", "Turn Time", "Turn Check Count"])
 
     combined_raw = pd.concat(all_rows, ignore_index=True)
-    result = combined_raw.groupby(["Store", "Server"], as_index=False)["Turn Time"].mean()
+    result = combined_raw.groupby(["Store", "Server"], as_index=False).agg(
+        **{
+            "Turn Time": ("Turn Time", "mean"),
+            "Turn Check Count": ("Turn Time", "size"),
+        }
+    )
     result["Turn Time"] = result["Turn Time"].round(2)
     return result
 
@@ -394,6 +417,7 @@ def process_beverage_file(file):
     col_store = pick_col(df, ["location"])
     col_server = pick_col(df, ["employee"])
     col_bev = pick_col(df, ["% of net sales"])
+    col_net_sales = pick_col(df, ["net sales", "net sls", "net sales $", "net sls $"])
 
     missing = []
     if not col_store:
@@ -416,6 +440,7 @@ def process_beverage_file(file):
     df["Store"] = raw_locations.apply(extract_store_number).apply(normalize_store_number)
     df["Server"] = df[col_server].apply(strip_employee_id).apply(clean_name)
     df["Dine In Bev %"] = pd.to_numeric(df[col_bev], errors="coerce")
+    df["Bev Weight"] = pd.to_numeric(df[col_net_sales], errors="coerce") if col_net_sales else pd.NA
 
     df = df.dropna(subset=["Store", "Dine In Bev %"]).copy()
     df["Store"] = df["Store"].astype(str).str.strip()
@@ -429,7 +454,7 @@ def process_beverage_file(file):
     if not non_null.empty and non_null.median() > 1:
         df["Dine In Bev %"] = df["Dine In Bev %"] / 100
 
-    return df[["Store", "Server", "Dine In Bev %"]]
+    return df[["Store", "Server", "Dine In Bev %", "Bev Weight"]]
 
 
 def process_all_beverage_files(files):
@@ -442,10 +467,29 @@ def process_all_beverage_files(files):
             st.error(f"Rosnet Contest Detail file '{file.name}' failed: {e}")
 
     if not all_rows:
-        return pd.DataFrame(columns=["Store", "Server", "Dine In Bev %"])
+        return pd.DataFrame(columns=["Store", "Server", "Dine In Bev %", "Bev Weight"])
 
     combined = pd.concat(all_rows, ignore_index=True)
-    return combined.groupby(["Store", "Server"], as_index=False)["Dine In Bev %"].mean()
+
+    def aggregate_bev(group):
+        weights = pd.to_numeric(group["Bev Weight"], errors="coerce")
+        values = pd.to_numeric(group["Dine In Bev %"], errors="coerce")
+        valid = values.notna()
+        weighted = valid & weights.notna() & (weights > 0)
+
+        if weighted.any():
+            bev_pct = (values[weighted] * weights[weighted]).sum() / weights[weighted].sum()
+            bev_weight = weights[weighted].sum()
+        else:
+            bev_pct = values[valid].mean() if valid.any() else pd.NA
+            bev_weight = pd.NA
+
+        return pd.Series({
+            "Dine In Bev %": bev_pct,
+            "Bev Weight": bev_weight,
+        })
+
+    return combined.groupby(["Store", "Server"], as_index=False).apply(aggregate_bev, include_groups=False)
 
 
 # =========================
@@ -543,18 +587,17 @@ def greens_count(row):
 # WhatsApp Card Export
 # =========================
 def create_whatsapp_store_card(store_label, store_df_sorted):
-    avg_tablet = safe_mean(store_df_sorted["Tablet %"])
-    avg_turn = safe_mean(store_df_sorted["Turn Time"])
-    avg_bev = safe_mean(store_df_sorted["Dine In Bev %"])
+    avg_tablet = weighted_mean(store_df_sorted, "Tablet %", "Tablet Weight", default=safe_mean(store_df_sorted["Tablet %"]))
+    avg_turn = weighted_mean(store_df_sorted, "Turn Time", "Turn Check Count", default=safe_mean(store_df_sorted["Turn Time"]))
+    avg_bev = weighted_mean(store_df_sorted, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df_sorted["Dine In Bev %"]))
 
-    tablet_top = get_rank_names(store_df_sorted, "Tablet %", ascending=False)
-    tablet_bottom = get_rank_names(store_df_sorted, "Tablet %", ascending=True)
-
-    turn_best = get_rank_names(store_df_sorted, "Turn Time", ascending=True)
-    turn_slowest = get_rank_names(store_df_sorted, "Turn Time", ascending=False)
-
-    bev_top = get_rank_names(store_df_sorted, "Dine In Bev %", ascending=False)
-    bev_bottom = get_rank_names(store_df_sorted, "Dine In Bev %", ascending=True)
+    total_servers = len(store_df_sorted)
+    all_green = store_df_sorted[
+        store_df_sorted["Tablet %"].apply(is_tablet_green)
+        & store_df_sorted["Turn Time"].apply(is_turn_green)
+        & store_df_sorted["Dine In Bev %"].apply(is_bev_green)
+    ]
+    all_green_count = len(all_green)
 
     export_df = store_df_sorted.copy()
 
@@ -580,7 +623,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
     export_df = export_df[["Server", "Tablet %", "Turn Time", "Dine In Bev %"]].copy()
 
     row_count = len(export_df)
-    fig_height = max(10.2, 5.6 + (row_count * 0.48))
+    fig_height = max(9.4, 4.9 + (row_count * 0.42))
     fig, ax = plt.subplots(figsize=(8.2, fig_height))
     fig.patch.set_facecolor("white")
     ax.set_axis_off()
@@ -602,56 +645,46 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         zorder=1
     ))
     ax.text(
-        0.03, 0.95, store_label,
+        0.50, 0.95, store_label,
         transform=ax.transAxes,
         fontsize=17,
         fontweight="bold",
         color="white",
+        ha="center",
         va="center",
         zorder=2
     )
 
-    lane_y = 0.65
-    lane_h = 0.21
-    lane_w = 0.29
-    lane_gap = 0.03
-    lane_xs = [0.03, 0.03 + lane_w + lane_gap, 0.03 + (lane_w + lane_gap) * 2]
+    lane_y = 0.67
+    lane_h = 0.16
+    lane_w = 0.22
+    lane_xs = [0.03, 0.27, 0.51, 0.75]
 
     lane_data = [
         (
             "TABLET",
-            "Avg Tablet %",
             "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}",
-            "Top",
-            wrap_names(tablet_top, width=18),
-            "Bottom",
-            wrap_names(tablet_bottom, width=18),
             tablet_box_color(avg_tablet),
         ),
         (
             "TURN",
-            "Avg Turn",
             "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}",
-            "Best",
-            wrap_names(turn_best, width=18),
-            "Slowest",
-            wrap_names(turn_slowest, width=18),
             turn_box_color(avg_turn),
         ),
         (
             "BEVERAGE",
-            "Avg Dine In Bev %",
             "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}",
-            "Top",
-            wrap_names(bev_top, width=18),
-            "Bottom",
-            wrap_names(bev_bottom, width=18),
             beverage_box_color(avg_bev),
+        ),
+        (
+            "ALL GREEN",
+            f"{all_green_count} of {total_servers}",
+            "#b160f0",
         ),
     ]
 
     for lane_x, lane in zip(lane_xs, lane_data):
-        title, avg_label, avg_value, label1, value1, label2, value2, fill_color = lane
+        title, avg_value, fill_color = lane
         text_color = box_text_color(fill_color)
 
         ax.add_patch(Rectangle(
@@ -664,52 +697,27 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
         ))
 
         ax.text(
-            lane_x + 0.015, lane_y + lane_h - 0.025, title,
+            lane_x + lane_w / 2, lane_y + lane_h - 0.03, title,
             transform=ax.transAxes,
             fontsize=11,
             fontweight="bold",
-            color=text_color,
+            color="white",
+            ha="center",
             va="top",
             zorder=2
         )
 
         ax.text(
-            lane_x + 0.015, lane_y + lane_h - 0.060, avg_label,
+            lane_x + lane_w / 2, lane_y + 0.06, avg_value,
             transform=ax.transAxes,
-            fontsize=8.8,
-            color=text_color,
-            va="top",
-            zorder=2
-        )
-
-        ax.text(
-            lane_x + 0.015, lane_y + lane_h - 0.092, avg_value,
-            transform=ax.transAxes,
-            fontsize=12,
+            fontsize=18,
             fontweight="bold",
-            color=text_color,
-            va="top",
+            color="#111827",
+            ha="center",
+            va="center",
             zorder=2
         )
-
-        ax.text(
-            lane_x + 0.015, lane_y + lane_h - 0.132, f"{label1}: {value1}",
-            transform=ax.transAxes,
-            fontsize=8.4,
-            color=text_color,
-            va="top",
-            zorder=2
-        )
-
-        ax.text(
-            lane_x + 0.015, lane_y + lane_h - 0.190, f"{label2}: {value2}",
-            transform=ax.transAxes,
-            fontsize=8.4,
-            color=text_color,
-            va="top",
-            zorder=2
-        )
-    table_bbox = [0.03, 0.04, 0.94, 0.56]
+    table_bbox = [0.08, 0.09, 0.84, 0.49]
     table = ax.table(
         cellText=export_df.values,
         colLabels=export_df.columns,
@@ -720,7 +728,7 @@ def create_whatsapp_store_card(store_label, store_df_sorted):
 
     table.auto_set_font_size(False)
     table.set_fontsize(9.8)
-    table.scale(1, 1.45)
+    table.scale(1, 1.42)
 
     ncols = len(export_df.columns)
 
@@ -848,9 +856,9 @@ if tablet_files or turn_files or beverage_files:
             store_label = get_store_label(store)
             st.markdown(f"### 📍 {store_label}")
 
-            avg_tablet = safe_mean(store_df["Tablet %"])
-            avg_turn = safe_mean(store_df["Turn Time"])
-            avg_bev = safe_mean(store_df["Dine In Bev %"])
+            avg_tablet = weighted_mean(store_df, "Tablet %", "Tablet Weight", default=safe_mean(store_df["Tablet %"]))
+            avg_turn = weighted_mean(store_df, "Turn Time", "Turn Check Count", default=safe_mean(store_df["Turn Time"]))
+            avg_bev = weighted_mean(store_df, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df["Dine In Bev %"]))
 
             tablet_col, turn_col, bev_col = st.columns(3)
 
