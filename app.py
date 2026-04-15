@@ -597,7 +597,9 @@ def process_ppa_file(file):
     df["Net Sales"] = pd.to_numeric(df[col_net_sales], errors="coerce")
     df["PPA Weight"] = pd.to_numeric(df[col_covers], errors="coerce")
     reported_ppa = pd.to_numeric(df[col_ppa], errors="coerce")
-    df["PPA"] = (df["Net Sales"] / df["PPA Weight"]).where(df["PPA Weight"] > 0, reported_ppa)
+    computed_ppa = (df["Net Sales"] / df["PPA Weight"]).where(df["PPA Weight"] > 0)
+    # Trust Rosnet's employee-level PPA when provided; use computed values only as fallback.
+    df["PPA"] = reported_ppa.fillna(computed_ppa)
 
     df = df.dropna(subset=["Store", "PPA"]).copy()
     df["Store"] = df["Store"].astype(str).str.strip()
