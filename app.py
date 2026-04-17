@@ -1,9 +1,11 @@
+import os
 import re
 import textwrap
 from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
+import psycopg2
 import streamlit as st
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -11,7 +13,7 @@ from matplotlib.patches import Rectangle
 st.set_page_config(page_title="FOH Performance Dashboard", layout="wide")
 
 st.title("FOH Performance Dashboard")
-st.caption("Upload your source reports below to build the combined store dashboards.")
+st.caption("Use the FOH database for the priority stores, or fall back to uploads when needed.")
 
 # =========================
 # Preferred Store Mapping
@@ -32,6 +34,7 @@ BADGE_ICON_PATHS = {
     "COACH": ICON_DIR / "coach.png",
     "SLOWEST TURN": ICON_DIR / "slowest_turn.png",
 }
+PRIORITY_STORES = ("3231", "4445", "4456", "4463")
 
 
 @st.cache_resource
@@ -42,36 +45,140 @@ def load_badge_icons():
             icons[label] = plt.imread(path)
     return icons
 
+
+def get_db_config():
+    try:
+        secrets = dict(st.secrets)
+    except Exception:
+        secrets = {}
+    candidates = {}
+    for key in ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]:
+        if key in secrets:
+            candidates[key] = secrets[key]
+        elif os.getenv(key):
+            candidates[key] = os.getenv(key)
+    if len(candidates) == 5:
+        return candidates
+    return None
+
+
+@st.cache_data(ttl=300)
+def load_available_business_dates():
+    cfg = get_db_config()
+    if not cfg:
+        return []
+    conn = psycopg2.connect(
+        host=cfg["DB_HOST"],
+        port=cfg["DB_PORT"],
+        dbname=cfg["DB_NAME"],
+        user=cfg["DB_USER"],
+        password=cfg["DB_PASSWORD"],
+    )
+    try:
+        query = """
+            select distinct business_date
+            from public.foh_daily_metrics
+            where store_number in (3231, 4445, 4456, 4463)
+            order by business_date desc
+        """
+        return pd.read_sql(query, conn)["business_date"].tolist()
+    finally:
+        conn.close()
+
+
+@st.cache_data(ttl=300)
+def load_foh_metrics_for_date(business_date):
+    cfg = get_db_config()
+    if not cfg:
+        return pd.DataFrame()
+    conn = psycopg2.connect(
+        host=cfg["DB_HOST"],
+        port=cfg["DB_PORT"],
+        dbname=cfg["DB_NAME"],
+        user=cfg["DB_USER"],
+        password=cfg["DB_PASSWORD"],
+    )
+    try:
+        query = """
+            select
+                store_number::text as "Store",
+                employee_name as "Server",
+                store_label,
+                support_staff,
+                tablet_pct as "Tablet %",
+                tablet_weight as "Tablet Weight",
+                turn_time as "Turn Time",
+                turn_check_count as "Turn Check Count",
+                dine_in_bev_pct as "Dine In Bev %",
+                bev_weight as "Bev Weight",
+                ppa as "PPA",
+                ppa_weight as "PPA Weight",
+                net_sales
+            from public.foh_daily_metrics
+            where business_date = %s
+              and store_number in (3231, 4445, 4456, 4463)
+            order by store_number, employee_name
+        """
+        df = pd.read_sql(query, conn, params=[business_date])
+    finally:
+        conn.close()
+
+    if df.empty:
+        return df
+
+    for _, row in df[["Store", "store_label"]].dropna(subset=["Store"]).drop_duplicates().iterrows():
+        register_store_label(row["Store"], row["store_label"])
+
+    df["Store"] = df["Store"].apply(normalize_store_number)
+    df["Server"] = df["Server"].fillna("").astype(str).str.strip()
+    df = df[df["Server"] != ""].copy()
+    df = df[~df["Server"].str.lower().str.contains("total", na=False)].copy()
+    df["_support_staff"] = df["support_staff"].fillna(False).astype(bool) | df["Server"].apply(is_support_staff)
+    return df.drop(columns=["store_label", "support_staff"], errors="ignore")
+
 # =========================
-# Upload Section
+# Data Source
 # =========================
-tablet_files = st.file_uploader(
-    "Upload Tray Orders CSV(s)",
-    type=["csv"],
-    accept_multiple_files=True,
+data_source = st.radio(
+    "Data source",
+    ["FOH Database", "Manual Uploads"],
+    horizontal=True,
+    index=0,
 )
-st.caption("Use the Tray Orders export that includes handheld and POS order activity.")
 
-turn_files = st.file_uploader(
-    "Upload Tray Checks CSV(s)",
-    type=["csv", "xlsx", "xls"],
-    accept_multiple_files=True,
-)
-st.caption("Use the Tray Checks export to calculate Eat-In turn times.")
+tablet_files = []
+turn_files = []
+beverage_files = []
+ppa_files = []
 
-beverage_files = st.file_uploader(
-    "Upload Rosnet Contest Detail XLSX",
-    type=["xlsx", "xls", "csv"],
-    accept_multiple_files=True,
-)
-st.caption("Use the Rosnet Contest Detail export for Dine-In Beverage % by employee.")
+if data_source == "Manual Uploads":
+    tablet_files = st.file_uploader(
+        "Upload Tray Orders CSV(s)",
+        type=["csv"],
+        accept_multiple_files=True,
+    )
+    st.caption("Use the Tray Orders export that includes handheld and POS order activity.")
 
-ppa_files = st.file_uploader(
-    "Upload Employee Sales Statistics XLSX",
-    type=["xlsx", "xls", "csv"],
-    accept_multiple_files=True,
-)
-st.caption("Use the Employee Sales Statistics export for employee-level PPA.")
+    turn_files = st.file_uploader(
+        "Upload Tray Checks CSV(s)",
+        type=["csv", "xlsx", "xls"],
+        accept_multiple_files=True,
+    )
+    st.caption("Use the Tray Checks export to calculate Eat-In turn times.")
+
+    beverage_files = st.file_uploader(
+        "Upload Rosnet Contest Detail XLSX",
+        type=["xlsx", "xls", "csv"],
+        accept_multiple_files=True,
+    )
+    st.caption("Use the Rosnet Contest Detail export for Dine-In Beverage % by employee.")
+
+    ppa_files = st.file_uploader(
+        "Upload Employee Sales Statistics XLSX",
+        type=["xlsx", "xls", "csv"],
+        accept_multiple_files=True,
+    )
+    st.caption("Use the Employee Sales Statistics export for employee-level PPA.")
 
 # =========================
 # Helpers
@@ -81,9 +188,15 @@ def clean_name(name):
         return ""
     name = str(name).strip()
     if "," in name:
-        parts = name.split(",", 1)
-        name = f"{parts[1].strip()} {parts[0].strip()}"
-    return " ".join(name.split()).title()
+        parts = [part.strip() for part in name.split(",") if part.strip()]
+        if len(parts) >= 2:
+            name = " ".join(parts[1:] + [parts[0]])
+    name = name.replace(",", " ")
+    tokens = []
+    for token in name.split():
+        if not tokens or tokens[-1].lower() != token.lower():
+            tokens.append(token)
+    return " ".join(tokens).title()
 
 
 def is_support_staff(name):
@@ -1109,9 +1222,194 @@ def create_whatsapp_store_card(store_label, store_df):
 
 
 # =========================
+# Shared Dashboard Rendering
+# =========================
+def render_combined_dashboard(combined):
+    if combined.empty:
+        st.warning("No valid data could be processed.")
+        return
+
+    combined["Store"] = combined["Store"].fillna("Unknown").astype(str).str.strip()
+    combined["Store"] = combined["Store"].apply(normalize_store_number).fillna("Unknown")
+    combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
+
+    combined = combined[combined["Server"] != ""].copy()
+    combined = combined[~combined["Server"].str.lower().str.contains("total", na=False)].copy()
+
+    if "_support_staff" not in combined.columns:
+        combined["_support_staff"] = combined["Server"].apply(is_support_staff)
+
+    if "Tablet %" not in combined.columns:
+        combined["Tablet %"] = pd.NA
+    if "Turn Time" not in combined.columns:
+        combined["Turn Time"] = pd.NA
+    if "Dine In Bev %" not in combined.columns:
+        combined["Dine In Bev %"] = pd.NA
+    if "PPA" not in combined.columns:
+        combined["PPA"] = pd.NA
+
+    visible_combined = combined[~combined["_support_staff"]].copy()
+    ppa_available = visible_combined["PPA"].notna().any()
+
+    combined["_all_green"] = combined.apply(
+        lambda row: (
+            (not row["_support_staff"])
+            and is_tablet_green(row["Tablet %"])
+            and is_turn_green(row["Turn Time"])
+            and is_bev_green(row["Dine In Bev %"])
+            and (is_ppa_green(row["PPA"]) if ppa_available else True)
+        ),
+        axis=1,
+    )
+
+    combined["_greens_count"] = combined.apply(greens_count, axis=1)
+
+    store_order = sorted(
+        combined["Store"].dropna().unique(),
+        key=lambda x: (x == "Unknown", x)
+    )
+
+    st.subheader("Combined Server Performance")
+
+    for store in store_order:
+        store_df = combined[combined["Store"] == store].copy()
+
+        if store_df.empty:
+            continue
+
+        store_label = get_store_label(store)
+        store_display_df = store_df[~store_df["_support_staff"]].copy()
+        st.markdown(f"### 📍 {store_label}")
+
+        avg_tablet = weighted_mean(store_df, "Tablet %", "Tablet Weight", default=safe_mean(store_df["Tablet %"]))
+        avg_turn = weighted_mean(store_df, "Turn Time", "Turn Check Count", default=safe_mean(store_df["Turn Time"]))
+        avg_bev = weighted_mean(store_df, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df["Dine In Bev %"]))
+        avg_ppa = weighted_mean(store_df, "PPA", "PPA Weight", default=safe_mean(store_df["PPA"]))
+
+        tablet_col, turn_col, bev_col, ppa_col = st.columns(4)
+
+        with tablet_col:
+            st.metric(
+                "Avg Tablet %",
+                "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}"
+            )
+            st.markdown(format_single_rank_line(store_display_df, "Tablet %", "Top", ascending=False))
+            st.markdown(format_single_rank_line(store_display_df, "Tablet %", "Bottom", ascending=True))
+
+        with turn_col:
+            st.metric(
+                "Avg Turn",
+                "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}"
+            )
+            st.markdown(format_single_rank_line(store_display_df, "Turn Time", "Best", ascending=True))
+            st.markdown(format_single_rank_line(store_display_df, "Turn Time", "Slowest", ascending=False))
+
+        with bev_col:
+            st.metric(
+                "Avg Dine In Bev %",
+                "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}"
+            )
+            st.markdown(format_single_rank_line(store_display_df, "Dine In Bev %", "Top", ascending=False))
+            st.markdown(format_single_rank_line(store_display_df, "Dine In Bev %", "Bottom", ascending=True))
+
+        with ppa_col:
+            st.metric(
+                "Avg PPA",
+                "No data" if pd.isna(avg_ppa) else f"${avg_ppa:.2f}"
+            )
+            st.markdown(format_single_rank_line(store_display_df, "PPA", "Top", ascending=False))
+            st.markdown(format_single_rank_line(store_display_df, "PPA", "Bottom", ascending=True))
+
+        def tablet_metric_with_dot(x):
+            if pd.isna(x):
+                return ""
+            return f"{tablet_score_icon(x)} {x:.2%}"
+
+        def turn_metric_with_dot(x):
+            if pd.isna(x):
+                return ""
+            return f"{turn_score_icon(x)} {x:.2f}"
+
+        def beverage_metric_with_dot(x):
+            if pd.isna(x):
+                return ""
+            return f"{beverage_score_icon(x)} {x:.2%}"
+
+        def ppa_metric_with_dot(x):
+            if pd.isna(x):
+                return ""
+            return f"{ppa_score_icon(x)} ${x:.2f}"
+
+        store_df_sorted = store_display_df.copy()
+        store_df_sorted["_tablet_sort"] = pd.to_numeric(store_df_sorted["Tablet %"], errors="coerce").fillna(-1)
+        store_df_sorted["_turn_sort"] = pd.to_numeric(store_df_sorted["Turn Time"], errors="coerce").fillna(999999)
+        store_df_sorted["_bev_sort"] = pd.to_numeric(store_df_sorted["Dine In Bev %"], errors="coerce").fillna(-1)
+        store_df_sorted["_ppa_sort"] = pd.to_numeric(store_df_sorted["PPA"], errors="coerce").fillna(-1)
+
+        store_df_sorted = store_df_sorted.sort_values(
+            by=["_greens_count", "_tablet_sort", "_turn_sort", "_bev_sort", "_ppa_sort", "Server"],
+            ascending=[False, False, True, False, False, True]
+        ).reset_index(drop=True)
+
+        display_df = store_df_sorted.copy()
+        display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
+        display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
+        display_df["Dine In Bev %"] = display_df["Dine In Bev %"].apply(beverage_metric_with_dot)
+        display_df["PPA"] = display_df["PPA"].apply(ppa_metric_with_dot)
+
+        display_df = display_df[[
+            "Server",
+            "Tablet %",
+            "Turn Time",
+            "Dine In Bev %",
+            "PPA",
+        ]]
+
+        def highlight_all_green(row):
+            original_row = store_df_sorted.iloc[row.name]
+            if original_row["_all_green"]:
+                return ["background-color: #e8f5e9"] * len(row)
+            return [""] * len(row)
+
+        styled_df = display_df.style.apply(highlight_all_green, axis=1)
+
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+        card_fig = create_whatsapp_store_card(store_label, store_df)
+        card_buf = fig_to_png_bytes(card_fig)
+        safe_store_label = store_label.replace(" - ", "_").replace(" ", "_")
+
+        st.download_button(
+            label=f"Download {store_label} WhatsApp Card",
+            data=card_buf,
+            file_name=f"{safe_store_label}_whatsapp_card.png",
+            mime="image/png",
+        )
+
+        st.divider()
+
+
+# =========================
 # Main Processing
 # =========================
-if tablet_files or turn_files or beverage_files or ppa_files:
+if data_source == "FOH Database":
+    cfg = get_db_config()
+    if not cfg:
+        st.warning("Database credentials are not configured. Switch to Manual Uploads or add DB secrets.")
+    else:
+        available_dates = load_available_business_dates()
+        if not available_dates:
+            st.warning("No FOH database data is available yet for the priority stores.")
+        else:
+            selected_date = st.selectbox(
+                "Business date",
+                available_dates,
+                format_func=lambda x: pd.to_datetime(x).strftime("%b %-d, %Y") if hasattr(x, "strftime") else str(x),
+            )
+            combined = load_foh_metrics_for_date(selected_date)
+            st.caption(f"Showing FOH database data for {pd.to_datetime(selected_date).strftime('%B %-d, %Y')} across the priority stores.")
+            render_combined_dashboard(combined.copy())
+elif tablet_files or turn_files or beverage_files or ppa_files:
     if beverage_files and len(beverage_files) > 1:
         st.warning("Multiple Contest Detail files uploaded. Using only the most recent file for Dine-In Bev %.")
     if ppa_files and len(ppa_files) > 1:
@@ -1145,164 +1443,8 @@ if tablet_files or turn_files or beverage_files or ppa_files:
         )
 
     if not combined.empty:
-        combined["Store"] = combined["Store"].fillna("Unknown").astype(str).str.strip()
-        combined["Store"] = combined["Store"].apply(normalize_store_number).fillna("Unknown")
-        combined["Server"] = combined["Server"].fillna("").astype(str).str.strip()
-
-        combined = combined[combined["Server"] != ""].copy()
-        combined = combined[~combined["Server"].str.lower().str.contains("total", na=False)].copy()
-        combined["_support_staff"] = combined["Server"].apply(is_support_staff)
-
-        if "Tablet %" not in combined.columns:
-            combined["Tablet %"] = pd.NA
-        if "Turn Time" not in combined.columns:
-            combined["Turn Time"] = pd.NA
-        if "Dine In Bev %" not in combined.columns:
-            combined["Dine In Bev %"] = pd.NA
-        if "PPA" not in combined.columns:
-            combined["PPA"] = pd.NA
-
-        visible_combined = combined[~combined["_support_staff"]].copy()
-        ppa_available = visible_combined["PPA"].notna().any()
-
-        combined["_all_green"] = combined.apply(
-            lambda row: (
-                (not row["_support_staff"])
-                and
-                is_tablet_green(row["Tablet %"])
-                and is_turn_green(row["Turn Time"])
-                and is_bev_green(row["Dine In Bev %"])
-                and (is_ppa_green(row["PPA"]) if ppa_available else True)
-            ),
-            axis=1,
-        )
-
-        combined["_greens_count"] = combined.apply(greens_count, axis=1)
-
-        store_order = sorted(
-            combined["Store"].dropna().unique(),
-            key=lambda x: (x == "Unknown", x)
-        )
-
-        st.subheader("Combined Server Performance")
-
-        for store in store_order:
-            store_df = combined[combined["Store"] == store].copy()
-
-            if store_df.empty:
-                continue
-
-            store_label = get_store_label(store)
-            store_display_df = store_df[~store_df["_support_staff"]].copy()
-            st.markdown(f"### 📍 {store_label}")
-
-            avg_tablet = weighted_mean(store_df, "Tablet %", "Tablet Weight", default=safe_mean(store_df["Tablet %"]))
-            avg_turn = weighted_mean(store_df, "Turn Time", "Turn Check Count", default=safe_mean(store_df["Turn Time"]))
-            avg_bev = weighted_mean(store_df, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df["Dine In Bev %"]))
-            avg_ppa = weighted_mean(store_df, "PPA", "PPA Weight", default=safe_mean(store_df["PPA"]))
-
-            tablet_col, turn_col, bev_col, ppa_col = st.columns(4)
-
-            with tablet_col:
-                st.metric(
-                    "Avg Tablet %",
-                    "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}"
-                )
-                st.markdown(format_single_rank_line(store_display_df, "Tablet %", "Top", ascending=False))
-                st.markdown(format_single_rank_line(store_display_df, "Tablet %", "Bottom", ascending=True))
-
-            with turn_col:
-                st.metric(
-                    "Avg Turn",
-                    "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}"
-                )
-                st.markdown(format_single_rank_line(store_display_df, "Turn Time", "Best", ascending=True))
-                st.markdown(format_single_rank_line(store_display_df, "Turn Time", "Slowest", ascending=False))
-
-            with bev_col:
-                st.metric(
-                    "Avg Dine In Bev %",
-                    "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}"
-                )
-                st.markdown(format_single_rank_line(store_display_df, "Dine In Bev %", "Top", ascending=False))
-                st.markdown(format_single_rank_line(store_display_df, "Dine In Bev %", "Bottom", ascending=True))
-
-            with ppa_col:
-                st.metric(
-                    "Avg PPA",
-                    "No data" if pd.isna(avg_ppa) else f"${avg_ppa:.2f}"
-                )
-                st.markdown(format_single_rank_line(store_display_df, "PPA", "Top", ascending=False))
-                st.markdown(format_single_rank_line(store_display_df, "PPA", "Bottom", ascending=True))
-
-            def tablet_metric_with_dot(x):
-                if pd.isna(x):
-                    return ""
-                return f"{tablet_score_icon(x)} {x:.2%}"
-
-            def turn_metric_with_dot(x):
-                if pd.isna(x):
-                    return ""
-                return f"{turn_score_icon(x)} {x:.2f}"
-
-            def beverage_metric_with_dot(x):
-                if pd.isna(x):
-                    return ""
-                return f"{beverage_score_icon(x)} {x:.2%}"
-
-            def ppa_metric_with_dot(x):
-                if pd.isna(x):
-                    return ""
-                return f"{ppa_score_icon(x)} ${x:.2f}"
-
-            store_df_sorted = store_display_df.copy()
-            store_df_sorted["_tablet_sort"] = pd.to_numeric(store_df_sorted["Tablet %"], errors="coerce").fillna(-1)
-            store_df_sorted["_turn_sort"] = pd.to_numeric(store_df_sorted["Turn Time"], errors="coerce").fillna(999999)
-            store_df_sorted["_bev_sort"] = pd.to_numeric(store_df_sorted["Dine In Bev %"], errors="coerce").fillna(-1)
-            store_df_sorted["_ppa_sort"] = pd.to_numeric(store_df_sorted["PPA"], errors="coerce").fillna(-1)
-
-            store_df_sorted = store_df_sorted.sort_values(
-                by=["_greens_count", "_tablet_sort", "_turn_sort", "_bev_sort", "_ppa_sort", "Server"],
-                ascending=[False, False, True, False, False, True]
-            ).reset_index(drop=True)
-
-            display_df = store_df_sorted.copy()
-            display_df["Tablet %"] = display_df["Tablet %"].apply(tablet_metric_with_dot)
-            display_df["Turn Time"] = display_df["Turn Time"].apply(turn_metric_with_dot)
-            display_df["Dine In Bev %"] = display_df["Dine In Bev %"].apply(beverage_metric_with_dot)
-            display_df["PPA"] = display_df["PPA"].apply(ppa_metric_with_dot)
-
-            display_df = display_df[[
-                "Server",
-                "Tablet %",
-                "Turn Time",
-                "Dine In Bev %",
-                "PPA",
-            ]]
-
-            def highlight_all_green(row):
-                original_row = store_df_sorted.iloc[row.name]
-                if original_row["_all_green"]:
-                    return ["background-color: #e8f5e9"] * len(row)
-                return [""] * len(row)
-
-            styled_df = display_df.style.apply(highlight_all_green, axis=1)
-
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
-            card_fig = create_whatsapp_store_card(store_label, store_df)
-            card_buf = fig_to_png_bytes(card_fig)
-            safe_store_label = store_label.replace(" - ", "_").replace(" ", "_")
-
-            st.download_button(
-                label=f"Download {store_label} WhatsApp Card",
-                data=card_buf,
-                file_name=f"{safe_store_label}_whatsapp_card.png",
-                mime="image/png",
-            )
-
-            st.divider()
+        render_combined_dashboard(combined.copy())
     else:
         st.warning("No valid data could be processed from the uploaded files.")
 else:
-    st.info("Upload your Tray Orders CSV(s), Tray Checks CSV(s), Rosnet Contest Detail XLSX, and/or Employee Sales Statistics XLSX to begin.")
+    st.info("Choose FOH Database to use the stored priority-store data, or switch to Manual Uploads and add source files to begin.")
