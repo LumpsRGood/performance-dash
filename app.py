@@ -1810,36 +1810,37 @@ if data_source == "FOH Database":
         if not available_dates:
             st.warning("No FOH database data is available yet for the priority stores.")
         else:
+            period_mode = st.radio(
+                "Period",
+                ["Yesterday", "WTD"],
+                horizontal=True,
+                index=0,
+                key="foh_period_mode",
+            )
             selected_date = st.selectbox(
                 "Business date",
                 available_dates,
                 format_func=lambda x: pd.to_datetime(x).strftime("%b %-d, %Y") if hasattr(x, "strftime") else str(x),
             )
-            combined = load_foh_metrics_for_date(selected_date)
-            st.caption(f"Showing FOH database data for {pd.to_datetime(selected_date).strftime('%B %-d, %Y')} across the priority stores.")
-            # WTD WhatsApp card experiment is intentionally disabled until we have
-            # a complete prior-week baseline to compare against.
-            #
-            # st.info("WhatsApp cards are currently in WTD test mode for FOH Database runs. The on-screen grid remains daily.")
-            # wtd_start, wtd_end, prev_week_start, prev_week_end = get_week_windows(selected_date)
-            # wtd_combined = aggregate_period_metrics(load_foh_metrics_between(wtd_start, wtd_end))
-            # prev_week_combined = aggregate_period_metrics(load_foh_metrics_between(prev_week_start, prev_week_end))
-            # card_by_store = {
-            #     store: wtd_combined[wtd_combined["Store"] == store].copy()
-            #     for store in sorted(wtd_combined["Store"].dropna().unique())
-            # }
-            # trend_by_store = {
-            #     store: prev_week_combined[prev_week_combined["Store"] == store].copy()
-            #     for store in sorted(prev_week_combined["Store"].dropna().unique())
-            # }
-            # render_combined_dashboard(
-            #     combined.copy(),
-            #     card_combined_by_store=card_by_store,
-            #     card_trend_by_store=trend_by_store,
-            #     card_subtitle=f"Week to Date through {pd.to_datetime(selected_date).strftime('%b %-d, %Y')}",
-            #     card_trend_note="Trend vs prior full week average (Mon-Sun)",
-            # )
-            render_combined_dashboard(combined.copy())
+            selected_dt = pd.to_datetime(selected_date)
+
+            if period_mode == "WTD":
+                wtd_start, wtd_end, _, _ = get_week_windows(selected_date)
+                combined = aggregate_period_metrics(load_foh_metrics_between(wtd_start, wtd_end))
+                st.caption(
+                    f"Showing FOH database WTD data for the Alabama priority stores from "
+                    f"{pd.to_datetime(wtd_start).strftime('%B %-d, %Y')} through {selected_dt.strftime('%B %-d, %Y')}."
+                )
+                render_combined_dashboard(
+                    combined.copy(),
+                    card_subtitle=f"Week to Date through {selected_dt.strftime('%b %-d, %Y')}",
+                )
+            else:
+                combined = load_foh_metrics_for_date(selected_date)
+                st.caption(
+                    f"Showing FOH database data for {selected_dt.strftime('%B %-d, %Y')} across the priority stores."
+                )
+                render_combined_dashboard(combined.copy())
 elif tablet_files or turn_files or beverage_files or ppa_files:
     if beverage_files and len(beverage_files) > 1:
         st.warning("Multiple Contest Detail files uploaded. Using only the most recent file for Dine-In Bev %.")
