@@ -1319,7 +1319,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     legend_items = [
         ("TOP PERFORMER", "Top Performer"),
         ("ALL GREEN", "All Green"),
-        ("COACH", "Needs Coaching"),
+        ("COACH", "Needs Coaching (missed Turn, Bev %, and PPA)"),
         ("SLOWEST TURN", "Slowest Turn"),
     ]
     footer_lines = 1 + (1 if trend_note else 0)
@@ -1534,8 +1534,8 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         icon_ax.imshow(icon)
         icon_ax.set_axis_off()
 
-    legend_y = 0.108
-    legend_positions = [0.12, 0.32, 0.50, 0.78]
+    legend_y = 0.098
+    legend_positions = [0.10, 0.27, 0.43, 0.82]
     for legend_x, (label, display_label) in zip(legend_positions, legend_items):
         icon = badge_icons.get(label)
         if icon is not None:
@@ -1551,22 +1551,22 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
             legend_y,
             display_label,
             transform=ax.transAxes,
-            fontsize=9.2,
+            fontsize=8.8,
             color="#334155",
             ha="left",
             va="center",
             zorder=4,
         )
 
-    notes = ["Needs Coaching = missed Turn, Dine In Bev %, and PPA"]
+    notes = []
     if trend_note:
         notes.append(trend_note)
-    note_y = 0.074
+    note_y = 0.068
     for note in notes:
         ax.text(
             0.50,
             note_y,
-            note.replace("Needs Coaching = missed Turn, Dine In Bev %, and PPA", "Needs Coaching (missed Turn, Bev %, and PPA)"),
+            note,
             transform=ax.transAxes,
             fontsize=8.8,
             color="#64748b",
