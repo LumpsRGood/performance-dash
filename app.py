@@ -104,11 +104,12 @@ def load_foh_metrics_for_date(business_date):
         user=cfg["DB_USER"],
         password=cfg["DB_PASSWORD"],
     )
+    business_date_sql = pd.to_datetime(business_date).date().isoformat()
     try:
         cur = conn.cursor()
         try:
             cur.execute(
-                """
+                f"""
                 select
                     store_number::text as store,
                     employee_name as server,
@@ -124,11 +125,10 @@ def load_foh_metrics_for_date(business_date):
                     ppa_weight as ppa_weight,
                     net_sales
                 from public.foh_daily_metrics
-                where business_date = %s
+                where business_date = date '{business_date_sql}'
                   and store_number in (3231, 4445, 4456, 4463)
                 order by store_number, employee_name
-                """,
-                (business_date,),
+                """
             )
             rows = cur.fetchall()
             cols = [desc[0] for desc in cur.description]
