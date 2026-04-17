@@ -518,6 +518,9 @@ def read_excel_with_header_search(file, required_terms, default_header=4, max_he
 def normalize_store_label(label):
     label = str(label).strip()
     label = re.sub(r"\s+", " ", label)
+    match = re.match(r"^\s*(\d{3,4})\s*[-–:]\s*\1\s*[-–:]\s*(.+)$", label)
+    if match:
+        label = f"{match.group(1)} - {match.group(2).strip()}"
     return label
 
 
@@ -1539,15 +1542,15 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         (
             0.108,
             [
-                (0.12, legend_items[0]),
-                (0.36, legend_items[1]),
+                (0.14, legend_items[0]),
+                (0.42, legend_items[1]),
+                (0.73, legend_items[3]),
             ],
         ),
         (
             0.073,
             [
-                (0.14, legend_items[2]),
-                (0.78, legend_items[3]),
+                (0.25, legend_items[2]),
             ],
         ),
     ]
@@ -1568,7 +1571,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
                 legend_y,
                 display_label,
                 transform=ax.transAxes,
-                fontsize=8.7 if label == "COACH" else 9.0,
+                fontsize=8.6 if label == "COACH" else 9.0,
                 color="#334155",
                 ha="left",
                 va="center",
