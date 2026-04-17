@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
@@ -292,7 +293,7 @@ def main():
     parser.add_argument("--business-date", required=True, help="YYYY-MM-DD")
     parser.add_argument("--orders-file", action="append", default=[])
     parser.add_argument("--checks-file", action="append", default=[])
-    parser.add_argument("--env-file", default="/Users/chad/Documents/New project/.env")
+    parser.add_argument("--env-file", default=None)
     args = parser.parse_args()
 
     business_date = pd.to_datetime(args.business_date).date()
@@ -334,7 +335,14 @@ def main():
         )
         merged[key] = existing
 
-    cfg = dotenv_values(args.env_file)
+    file_cfg = dotenv_values(args.env_file) if args.env_file else {}
+    cfg = {
+        "DB_HOST": os.getenv("DB_HOST") or file_cfg.get("DB_HOST"),
+        "DB_PORT": os.getenv("DB_PORT") or file_cfg.get("DB_PORT"),
+        "DB_NAME": os.getenv("DB_NAME") or file_cfg.get("DB_NAME"),
+        "DB_USER": os.getenv("DB_USER") or file_cfg.get("DB_USER"),
+        "DB_PASSWORD": os.getenv("DB_PASSWORD") or file_cfg.get("DB_PASSWORD"),
+    }
     conn = psycopg2.connect(
         host=cfg["DB_HOST"],
         port=cfg["DB_PORT"],

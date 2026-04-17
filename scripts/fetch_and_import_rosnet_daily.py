@@ -1,4 +1,5 @@
 import argparse
+import base64
 import hashlib
 import importlib.util
 import json
@@ -8,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 import psycopg2
+import requests
 from dotenv import dotenv_values, load_dotenv
 
 
@@ -17,6 +19,8 @@ STORE_MAP = {
     "4456": "Oxford",
     "4463": "Decatur",
 }
+
+BASE_URL = "https://api.rosnet.com"
 
 
 def normalize_store_number(store):
@@ -169,25 +173,183 @@ def file_hash_text(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def get_conn(env_file):
-    load_dotenv(env_file)
-    cfg = dotenv_values(env_file)
+def load_config(env_file=None):
+    if env_file:
+        load_dotenv(env_file)
+        file_cfg = dotenv_values(env_file)
+    else:
+        file_cfg = {}
+
+    def pick(name, default=None):
+        return os.getenv(name) or file_cfg.get(name) or default
+
+    return {
+        "DB_HOST": pick("DB_HOST"),
+        "DB_PORT": pick("DB_PORT", 6543),
+        "DB_NAME": pick("DB_NAME", "postgres"),
+        "DB_USER": pick("DB_USER"),
+        "DB_PASSWORD": pick("DB_PASSWORD"),
+        "ROSNET_API_USER": pick("ROSNET_API_USER"),
+        "ROSNET_API_KEY": pick("ROSNET_API_KEY"),
+        "ROSNET_CLIENT_ID": pick("ROSNET_CLIENT_ID"),
+    }
+
+
+def get_conn(env_file=None):
+    cfg = load_config(env_file)
     return psycopg2.connect(
         host=cfg["DB_HOST"],
-        port=cfg.get("DB_PORT", 6543),
-        dbname=cfg.get("DB_NAME", "postgres"),
+        port=cfg["DB_PORT"],
+        dbname=cfg["DB_NAME"],
         user=cfg["DB_USER"],
         password=cfg["DB_PASSWORD"],
     )
 
 
-def load_rosnet_api_module(api_module_path, env_file):
-    load_dotenv(env_file)
+def load_rosnet_api_module(api_module_path, env_file=None):
+    if env_file:
+        load_dotenv(env_file)
     spec = importlib.util.spec_from_file_location("rosnet_api", api_module_path)
     module = importlib.util.module_from_spec(spec)
     sys.modules["rosnet_api"] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _get_headers(cfg):
+    credentials = f"{cfg['ROSNET_API_USER']}:{cfg['ROSNET_API_KEY']}"
+    encoded = base64.b64encode(credentials.encode()).decode("utf-8")
+    headers = {
+        "Authorization": f"Basic {encoded}",
+        "Accept": "application/json",
+    }
+    if cfg.get("ROSNET_CLIENT_ID"):
+        headers["Client"] = cfg["ROSNET_CLIENT_ID"]
+    return headers
+
+
+def _make_request(cfg, endpoint, params=None):
+    url = f"{BASE_URL}{endpoint}"
+    headers = _get_headers(cfg)
+    params = dict(params or {})
+    all_results = []
+
+    while True:
+        response = requests.get(url, headers=headers, params=params, timeout=120)
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After", "unknown")
+            raise RuntimeError(f"Rosnet rate limit hit. Retry after {retry_after} seconds.")
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list):
+            all_results.extend(data)
+        else:
+            all_results.append(data)
+        cursor = response.headers.get("Cursor")
+        if not cursor:
+            break
+        params["cursor"] = cursor
+
+    return all_results
+
+
+def get_beverage_category_ids_api(cfg):
+    categories = _make_request(cfg, "/sales/definitions/majorCategories")
+    bev_ids = set()
+    if isinstance(categories, list):
+        for category in categories:
+            if category.get("IsBeerWineLiquor"):
+                bev_ids.add(category.get("Id"))
+            elif "beverage" in str(category.get("Name", "")).lower():
+                bev_ids.add(category.get("Id"))
+    return bev_ids
+
+
+def get_employees_map_api(cfg, location_id):
+    employees = _make_request(cfg, "/general/employees", params={"locationId": location_id})
+    emp_map = {}
+    if isinstance(employees, list):
+        for employee in employees:
+            emp_map[employee.get("Id")] = employee.get("Name")
+            emp_map[employee.get("LocationEmployeeId")] = employee.get("Name")
+    return emp_map
+
+
+def get_checks_api(cfg, business_date, location_id, emp_map=None, bev_cat_ids=None):
+    raw_checks = _make_request(
+        cfg,
+        "/sales/checks",
+        params={"businessDate": business_date, "locationId": location_id},
+    )
+
+    normalized = []
+    for check in raw_checks:
+        is_cc = any(payment.get("IsCreditCard") for payment in check.get("Payments", []))
+        payment_type = "Credit Card" if is_cc else "Other"
+
+        server = "Unknown Server"
+        items_sold = check.get("ItemsSold", []) or []
+        if items_sold:
+            emp_id = items_sold[0].get("EmployeeId", "Unknown")
+            server = emp_map.get(emp_id, f"Emp {emp_id}") if emp_map else f"Emp {emp_id}"
+
+        native_type = str(check.get("OrderType", check.get("OrderTypeName", ""))).strip()
+        if native_type:
+            order_type = native_type
+        else:
+            table_name = str(check.get("TableName", "0")).strip().lower()
+            is_togo = (
+                table_name in {"0", ""}
+                or "togo" in table_name
+                or "takeout" in table_name
+                or "to go" in table_name
+                or "pickup" in table_name
+                or "uber" in table_name
+                or "doordash" in table_name
+            )
+            order_type = "Delivery" if is_togo else "Eat In"
+
+        open_time = str(check.get("OpenTime", ""))
+        close_time = str(check.get("CloseTime", ""))
+        open_str = open_time.split("T")[-1] + ":00" if "T" in open_time else "00:00:00"
+        close_str = close_time.split("T")[-1] + ":00" if "T" in close_time else "00:00:00"
+
+        beverage_sales = 0.0
+        net_sales = 0.0
+        for item in items_sold:
+            price = item.get("SoldPrice", 0) or 0
+            net_sales += price
+            is_beverage = False
+            if bev_cat_ids and item.get("ItemMajorCatId") in bev_cat_ids:
+                is_beverage = True
+            elif "beverage" in str(item.get("ItemMajorCatName", "")).lower():
+                is_beverage = True
+            elif "beverage" in str(item.get("ItemSubCatName", "")).lower():
+                is_beverage = True
+            if is_beverage:
+                beverage_sales += price
+
+        if server == "Unknown Server" and net_sales == 0:
+            continue
+
+        normalized.append(
+            {
+                "businessDate": check.get("BusinessDate"),
+                "locationId": check.get("LocationId"),
+                "checkNumber": check.get("Id"),
+                "tableNumber": check.get("TableName", "0"),
+                "serverName": server,
+                "orderType": order_type,
+                "paymentType": payment_type,
+                "openTime": open_str,
+                "closeTime": close_str,
+                "guestCount": check.get("TrafficCount", 0),
+                "netSales": round(net_sales, 2),
+                "beverageSales": round(beverage_sales, 2),
+            }
+        )
+
+    return normalized
 
 
 def insert_import_run(cur, business_date, report_type, store_ids):
@@ -268,29 +430,43 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--business-date", required=True, help="YYYY-MM-DD")
     parser.add_argument("--stores", default="3231,4445,4456,4463")
-    parser.add_argument("--env-file", default="/Users/chad/Documents/New project/.env")
-    parser.add_argument("--api-module-path", default="/Users/chad/Documents/New project/api.py")
+    parser.add_argument("--env-file", default=None)
+    parser.add_argument("--api-module-path", default=None)
     args = parser.parse_args()
 
     business_date = pd.to_datetime(args.business_date).date()
     store_ids = [normalize_store_number(s) for s in args.stores.split(",") if str(s).strip()]
+    cfg = load_config(args.env_file)
 
-    rosnet_api = load_rosnet_api_module(args.api_module_path, args.env_file)
-    bev_ids = rosnet_api.get_beverage_category_ids()
+    if args.api_module_path and Path(args.api_module_path).exists():
+        rosnet_api = load_rosnet_api_module(args.api_module_path, args.env_file)
+        get_beverage_ids = rosnet_api.get_beverage_category_ids
+        get_employee_map = rosnet_api.get_employees_map
+        get_checks = lambda store_id, emp_map, bev_ids: rosnet_api.get_checks(
+            str(business_date),
+            str(business_date),
+            int(store_id),
+            emp_map=emp_map,
+            bev_cat_ids=bev_ids,
+        )
+    else:
+        if not cfg["ROSNET_API_USER"] or not cfg["ROSNET_API_KEY"]:
+            raise RuntimeError("Missing ROSNET_API_USER or ROSNET_API_KEY for Rosnet import.")
+        get_beverage_ids = lambda: get_beverage_category_ids_api(cfg)
+        get_employee_map = lambda store_id: get_employees_map_api(cfg, int(store_id))
+        get_checks = lambda store_id, emp_map, bev_ids: get_checks_api(
+            cfg, str(business_date), int(store_id), emp_map=emp_map, bev_cat_ids=bev_ids
+        )
+
+    bev_ids = get_beverage_ids()
     conn = get_conn(args.env_file)
     all_rows = []
 
     try:
         for store_id in store_ids:
             print(f"Fetching Rosnet checks for {store_id} on {business_date}...")
-            emp_map = rosnet_api.get_employees_map(int(store_id))
-            checks = rosnet_api.get_checks(
-                str(business_date),
-                str(business_date),
-                int(store_id),
-                emp_map=emp_map,
-                bev_cat_ids=bev_ids,
-            )
+            emp_map = get_employee_map(int(store_id))
+            checks = get_checks(int(store_id), emp_map, bev_ids)
             df = pd.DataFrame(checks)
             grouped = transform_checks(df, int(store_id), str(business_date))
             if grouped.empty:

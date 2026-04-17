@@ -1,5 +1,7 @@
 import os
 import re
+import subprocess
+import sys
 import textwrap
 from datetime import timedelta
 from io import BytesIO
@@ -40,6 +42,7 @@ BADGE_ICON_PATHS = {
     "SLOWEST TURN": ICON_DIR / "slowest_turn.png",
 }
 PRIORITY_STORES = ("3231", "4445", "4456", "4463")
+SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
 
 
 @st.cache_resource
@@ -65,6 +68,139 @@ def get_db_config():
     if len(candidates) == 5:
         return candidates
     return None
+
+
+def get_secret_or_env(key, default=None):
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+
+def load_recent_import_runs(limit=12):
+    cfg = get_db_config()
+    if not cfg:
+        return pd.DataFrame()
+    conn = psycopg2.connect(
+        host=cfg["DB_HOST"],
+        port=cfg["DB_PORT"],
+        dbname=cfg["DB_NAME"],
+        user=cfg["DB_USER"],
+        password=cfg["DB_PASSWORD"],
+    )
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                select business_date, source_system, report_type, status, started_at, completed_at
+                from public.foh_import_runs
+                where business_date >= current_date - interval '14 days'
+                order by started_at desc nulls last
+                limit %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
+            return pd.DataFrame(rows, columns=cols)
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+
+def run_refresh_job(job_type, business_date, stores=PRIORITY_STORES):
+    env = os.environ.copy()
+    for key in [
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        "ROSNET_API_USER",
+        "ROSNET_API_KEY",
+        "ROSNET_CLIENT_ID",
+        "TRAY_USERNAME",
+        "TRAY_PASSWORD",
+    ]:
+        value = get_secret_or_env(key)
+        if value is not None:
+            env[key] = str(value)
+
+    if job_type == "tray" and (not env.get("TRAY_USERNAME") or not env.get("TRAY_PASSWORD")):
+        return {
+            "ok": False,
+            "label": "Tray refresh",
+            "stdout": "",
+            "stderr": "Missing TRAY_USERNAME or TRAY_PASSWORD in Streamlit secrets.",
+        }
+
+    script_map = {
+        "rosnet": SCRIPTS_DIR / "fetch_and_import_rosnet_daily.py",
+        "tray": SCRIPTS_DIR / "fetch_and_import_tray_daily.py",
+    }
+    if job_type not in script_map:
+        return {"ok": False, "label": job_type, "stdout": "", "stderr": f"Unknown job type: {job_type}"}
+
+    script_path = script_map[job_type]
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--business-date",
+        pd.to_datetime(business_date).date().isoformat(),
+        "--stores",
+        ",".join(str(s) for s in stores),
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(Path(__file__).resolve().parent),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=1800,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "label": f"{job_type.title()} refresh",
+            "stdout": "",
+            "stderr": "Refresh timed out after 30 minutes.",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "label": f"{job_type.title()} refresh",
+            "stdout": "",
+            "stderr": str(exc),
+        }
+
+    return {
+        "ok": result.returncode == 0,
+        "label": f"{job_type.title()} refresh",
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+    }
+
+
+def run_full_refresh(business_date, stores=PRIORITY_STORES):
+    first = run_refresh_job("rosnet", business_date, stores=stores)
+    if not first["ok"]:
+        return first
+    second = run_refresh_job("tray", business_date, stores=stores)
+    merged_stdout = "\n\n".join(part for part in [first.get("stdout", ""), second.get("stdout", "")] if part)
+    merged_stderr = "\n\n".join(part for part in [first.get("stderr", ""), second.get("stderr", "")] if part)
+    return {
+        "ok": second["ok"],
+        "label": "Full refresh",
+        "stdout": merged_stdout,
+        "stderr": merged_stderr,
+    }
 
 
 @st.cache_data(ttl=300)
@@ -1608,6 +1744,44 @@ if data_source == "FOH Database":
     if not cfg:
         st.warning("Database credentials are not configured. Switch to Manual Uploads or add DB secrets.")
     else:
+        with st.expander("Admin: Refresh Alabama Data", expanded=False):
+            st.caption("Runs the Alabama priority-store import jobs for 3231, 4445, 4456, and 4463.")
+            recent_dates = load_available_business_dates()
+            default_refresh_date = pd.to_datetime(recent_dates[0]).date() if recent_dates else pd.Timestamp.today().date()
+            refresh_date = st.date_input("Refresh business date", value=default_refresh_date, key="refresh_business_date")
+            c1, c2, c3 = st.columns(3)
+            if c1.button("Run Rosnet Import", use_container_width=True):
+                with st.spinner("Running Rosnet import..."):
+                    st.session_state["last_refresh_result"] = run_refresh_job("rosnet", refresh_date)
+                st.cache_data.clear()
+                st.rerun()
+            if c2.button("Run Tray Import", use_container_width=True):
+                with st.spinner("Running Tray import..."):
+                    st.session_state["last_refresh_result"] = run_refresh_job("tray", refresh_date)
+                st.cache_data.clear()
+                st.rerun()
+            if c3.button("Run Full Refresh", use_container_width=True):
+                with st.spinner("Running Rosnet + Tray refresh..."):
+                    st.session_state["last_refresh_result"] = run_full_refresh(refresh_date)
+                st.cache_data.clear()
+                st.rerun()
+
+            last_result = st.session_state.get("last_refresh_result")
+            if last_result:
+                if last_result["ok"]:
+                    st.success(f"{last_result['label']} completed.")
+                else:
+                    st.error(f"{last_result['label']} failed.")
+                if last_result.get("stdout"):
+                    st.code(last_result["stdout"], language="text")
+                if last_result.get("stderr"):
+                    st.code(last_result["stderr"], language="text")
+
+            recent_runs = load_recent_import_runs()
+            if not recent_runs.empty:
+                st.markdown("**Recent import runs**")
+                st.dataframe(recent_runs, use_container_width=True, hide_index=True)
+
         available_dates = load_available_business_dates()
         if not available_dates:
             st.warning("No FOH database data is available yet for the priority stores.")
