@@ -22,9 +22,15 @@ def clean_name(name):
         return ""
     name = str(name).strip()
     if "," in name:
-        parts = name.split(",", 1)
-        name = f"{parts[1].strip()} {parts[0].strip()}"
-    return " ".join(name.split()).title()
+        parts = [part.strip() for part in name.split(",") if part.strip()]
+        if len(parts) >= 2:
+            name = " ".join(parts[1:] + [parts[0]])
+    name = name.replace(",", " ")
+    tokens = []
+    for token in name.split():
+        if not tokens or tokens[-1].lower() != token.lower():
+            tokens.append(token)
+    return " ".join(tokens).title()
 
 
 def pick_col(df, keywords):
