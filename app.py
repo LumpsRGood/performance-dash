@@ -743,16 +743,16 @@ def metric_delta_components(current, previous, previous_weight, metric_name, sco
 
 
 def metric_row_trend_marker(current, previous, previous_weight, metric_name):
-    text, _ = metric_delta_components(current, previous, previous_weight, metric_name, scope="row")
+    text, color = metric_delta_components(current, previous, previous_weight, metric_name, scope="row")
     if not text:
-        return ""
+        return "", None
     if text.startswith(" •"):
-        return " •"
+        return "•", color
     if text.startswith(" ▲"):
-        return " ▲"
+        return "▲", color
     if text.startswith(" ▼"):
-        return " ▼"
-    return ""
+        return "▼", color
+    return "", None
 
 
 def metric_kpi_delta_text(current, previous, previous_weight, metric_name):
@@ -1321,26 +1321,17 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     def export_turn_text(server, x):
         if pd.isna(x):
             return ""
-        previous = trend_lookup.get(server, {}).get("Turn Time", pd.NA)
-        previous_weight = trend_lookup.get(server, {}).get("Turn Check Count", pd.NA)
-        trend_marker = metric_row_trend_marker(x, previous, previous_weight, "Turn Time")
-        return f"{x:.2f}{trend_marker}"
+        return f"{x:.2f}"
 
     def export_bev_text(server, x):
         if pd.isna(x):
             return ""
-        previous = trend_lookup.get(server, {}).get("Dine In Bev %", pd.NA)
-        previous_weight = trend_lookup.get(server, {}).get("Bev Weight", pd.NA)
-        trend_marker = metric_row_trend_marker(x, previous, previous_weight, "Dine In Bev %")
-        return f"{x:.2%}{trend_marker}"
+        return f"{x:.2%}"
 
     def export_ppa_text(server, x):
         if pd.isna(x):
             return ""
-        previous = trend_lookup.get(server, {}).get("PPA", pd.NA)
-        previous_weight = trend_lookup.get(server, {}).get("PPA Weight", pd.NA)
-        trend_marker = metric_row_trend_marker(x, previous, previous_weight, "PPA")
-        return f"${x:.2f}{trend_marker}"
+        return f"${x:.2f}"
 
     export_df["Turn Time"] = export_df.apply(lambda r: export_turn_text(r["Server"], r["Turn Time"]), axis=1)
     export_df["Dine In Bev %"] = export_df.apply(lambda r: export_bev_text(r["Server"], r["Dine In Bev %"]), axis=1)
@@ -1617,6 +1608,35 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         )
         icon_ax.imshow(icon)
         icon_ax.set_axis_off()
+
+    for row_idx in range(1, len(export_df) + 1):
+        original_row = card_df.iloc[row_idx - 1]
+        for col_idx, metric_name, weight_name in [
+            (1, "Turn Time", "Turn Check Count"),
+            (2, "Dine In Bev %", "Bev Weight"),
+            (3, "PPA", "PPA Weight"),
+        ]:
+            metric_cell = table[row_idx, col_idx]
+            current_value = original_row.get(metric_name, pd.NA)
+            previous_value = trend_lookup.get(original_row["Server"], {}).get(metric_name, pd.NA)
+            previous_weight = trend_lookup.get(original_row["Server"], {}).get(weight_name, pd.NA)
+            marker, marker_color = metric_row_trend_marker(
+                current_value, previous_value, previous_weight, metric_name
+            )
+            if not marker:
+                continue
+            ax.text(
+                metric_cell.get_x() + metric_cell.get_width() * 0.92,
+                metric_cell.get_y() + metric_cell.get_height() * 0.50,
+                marker,
+                transform=ax.transAxes,
+                fontsize=11,
+                fontweight="bold",
+                color=marker_color,
+                ha="center",
+                va="center",
+                zorder=5,
+            )
 
     legend_rows = [
         (
