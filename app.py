@@ -75,13 +75,19 @@ def load_available_business_dates():
         password=cfg["DB_PASSWORD"],
     )
     try:
-        query = """
-            select distinct business_date
-            from public.foh_daily_metrics
-            where store_number in (3231, 4445, 4456, 4463)
-            order by business_date desc
-        """
-        return pd.read_sql(query, conn)["business_date"].tolist()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                select distinct business_date
+                from public.foh_daily_metrics
+                where store_number in (3231, 4445, 4456, 4463)
+                order by business_date desc
+                """
+            )
+            return [row[0] for row in cur.fetchall()]
+        finally:
+            cur.close()
     finally:
         conn.close()
 
@@ -99,27 +105,36 @@ def load_foh_metrics_for_date(business_date):
         password=cfg["DB_PASSWORD"],
     )
     try:
-        query = """
-            select
-                store_number::text as "Store",
-                employee_name as "Server",
-                store_label,
-                support_staff,
-                tablet_pct as "Tablet %",
-                tablet_weight as "Tablet Weight",
-                turn_time as "Turn Time",
-                turn_check_count as "Turn Check Count",
-                dine_in_bev_pct as "Dine In Bev %",
-                bev_weight as "Bev Weight",
-                ppa as "PPA",
-                ppa_weight as "PPA Weight",
-                net_sales
-            from public.foh_daily_metrics
-            where business_date = %s
-              and store_number in (3231, 4445, 4456, 4463)
-            order by store_number, employee_name
-        """
-        df = pd.read_sql(query, conn, params=[business_date])
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                select
+                    store_number::text as "Store",
+                    employee_name as "Server",
+                    store_label,
+                    support_staff,
+                    tablet_pct as "Tablet %",
+                    tablet_weight as "Tablet Weight",
+                    turn_time as "Turn Time",
+                    turn_check_count as "Turn Check Count",
+                    dine_in_bev_pct as "Dine In Bev %",
+                    bev_weight as "Bev Weight",
+                    ppa as "PPA",
+                    ppa_weight as "PPA Weight",
+                    net_sales
+                from public.foh_daily_metrics
+                where business_date = %s
+                  and store_number in (3231, 4445, 4456, 4463)
+                order by store_number, employee_name
+                """,
+                (business_date,),
+            )
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
+            df = pd.DataFrame(rows, columns=cols)
+        finally:
+            cur.close()
     finally:
         conn.close()
 
