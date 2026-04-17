@@ -738,7 +738,11 @@ def metric_delta_components(current, previous, previous_weight, metric_name, sco
         return f" •{display_delta:.{precision}f}", "#64748b"
 
     if delta > 0:
+        if metric_name == "Turn Time":
+            return f" ▼{display_delta:.{precision}f}", "#16a34a"
         return f" ▲{display_delta:.{precision}f}", "#16a34a"
+    if metric_name == "Turn Time":
+        return f" ▲{display_delta:.{precision}f}", "#dc2626"
     return f" ▼{display_delta:.{precision}f}", "#dc2626"
 
 
@@ -760,8 +764,8 @@ def metric_kpi_delta_text(current, previous, previous_weight, metric_name):
     if not text:
         return "", None
     if text.startswith(" •"):
-        return "• Flat", color
-    return text.strip(), color
+        return "• Flat vs LW", color
+    return f"{text.strip()} vs LW", color
 
 
 def format_single_rank_line(df, column, label, ascending=False):
@@ -1965,7 +1969,7 @@ if data_source == "FOH Database":
                     card_subtitle=f"Week to Date through {selected_dt.strftime('%b %-d, %Y')}",
                     card_trend_by_store=card_trend_by_store,
                     card_trend_note=(
-                        f"KPIs = change vs LW | row arrows = trend vs LW "
+                        f"All arrows vs LW "
                         f"({pd.to_datetime(prev_week_start).strftime('%b %-d')} - "
                         f"{pd.to_datetime(prev_week_end).strftime('%b %-d, %Y')})"
                     ),
