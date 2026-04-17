@@ -57,7 +57,20 @@ def extract_store_number(text):
     if pd.isna(text):
         return None
     text = str(text).strip()
-    match = re.search(r"(\d{3,4})", text)
+
+    match = re.search(r"IHOP\s*#\s*(\d{3,4})\b", text, flags=re.IGNORECASE)
+    if match:
+        return normalize_store_number(match.group(1))
+
+    match = re.match(r"^\s*(\d{3,4})\s*[-–:]", text)
+    if match:
+        return normalize_store_number(match.group(1))
+
+    match = re.fullmatch(r"\s*(\d{3,4})(?:\.0)?\s*", text)
+    if match:
+        return normalize_store_number(match.group(1))
+
+    match = re.search(r"(?:site|id site|store)\D{0,10}(\d{3,4})\b", text, flags=re.IGNORECASE)
     if not match:
         return None
     return normalize_store_number(match.group(1))
@@ -109,6 +122,9 @@ def process_orders_file(path: Path):
     df["Device Orders"] = df["Device Orders"].str.extract(r"(handheld|pos)", expand=False).fillna("unknown")
     df["Base"] = pd.to_numeric(df["Base"], errors="coerce").fillna(0)
     df["Server"] = df["Server"].apply(clean_name)
+    df["Server"] = df["Server"].fillna("").astype(str).str.strip()
+    df = df[df["Server"] != ""].copy()
+    df = df[~df["Server"].str.lower().str.contains("total", na=False)].copy()
     df["Store"] = df[col_store].apply(extract_store_number)
     fallback_store = extract_store_from_filename(path)
     if fallback_store:
@@ -171,6 +187,9 @@ def process_checks_file(path: Path):
     eat = eat[eat["Turn Time"] >= 0]
     eat[col_server] = eat[col_server].fillna("(Unknown)").replace("", "(Unknown)")
     eat["Server"] = eat[col_server].apply(clean_name)
+    eat["Server"] = eat["Server"].fillna("").astype(str).str.strip()
+    eat = eat[eat["Server"] != ""].copy()
+    eat = eat[~eat["Server"].str.lower().str.contains("total", na=False)].copy()
     eat["Store"] = eat[col_store].apply(extract_store_number)
     fallback_store = extract_store_from_filename(path)
     if fallback_store:
@@ -223,6 +242,9 @@ def insert_import_run(cur, business_date, report_type, files):
 
 def upsert_rows(cur, rows, orders_run_id=None, checks_run_id=None):
     for row in rows:
+        employee_name = str(row.get("employee_name") or "").strip()
+        if not employee_name:
+            continue
         cur.execute(
             """
             insert into public.foh_daily_metrics (
@@ -247,7 +269,7 @@ def upsert_rows(cur, rows, orders_run_id=None, checks_run_id=None):
                 row["business_date"],
                 row["store_number"],
                 row["store_label"],
-                row["employee_name"],
+                employee_name,
                 row["support_staff"],
                 row.get("tablet_pct"),
                 row.get("tablet_weight"),
