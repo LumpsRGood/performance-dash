@@ -1,6 +1,7 @@
 import os
 import re
 import textwrap
+from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -132,6 +133,82 @@ def load_foh_metrics_for_date(business_date):
                 where business_date = date '{business_date_sql}'
                   and store_number in (3231, 4445, 4456, 4463)
                 order by store_number, employee_name
+                """
+            )
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
+            df = pd.DataFrame(rows, columns=cols)
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+    if df.empty:
+        return df
+
+    df = df.rename(
+        columns={
+            "store": "Store",
+            "server": "Server",
+            "tablet_pct": "Tablet %",
+            "tablet_weight": "Tablet Weight",
+            "turn_time": "Turn Time",
+            "turn_check_count": "Turn Check Count",
+            "dine_in_bev_pct": "Dine In Bev %",
+            "bev_weight": "Bev Weight",
+            "ppa": "PPA",
+            "ppa_weight": "PPA Weight",
+        }
+    )
+
+    for _, row in df[["Store", "store_label"]].dropna(subset=["Store"]).drop_duplicates().iterrows():
+        register_store_label(row["Store"], row["store_label"])
+
+    df["Store"] = df["Store"].apply(normalize_store_number)
+    df["Server"] = df["Server"].fillna("").astype(str).str.strip()
+    df = df[df["Server"] != ""].copy()
+    df = df[~df["Server"].str.lower().str.contains("total", na=False)].copy()
+    df["_support_staff"] = df["support_staff"].fillna(False).astype(bool) | df["Server"].apply(is_support_staff)
+    return df.drop(columns=["store_label", "support_staff"], errors="ignore")
+
+
+@st.cache_data(ttl=300)
+def load_foh_metrics_between(start_date, end_date):
+    cfg = get_db_config()
+    if not cfg:
+        return pd.DataFrame()
+    conn = psycopg2.connect(
+        host=cfg["DB_HOST"],
+        port=cfg["DB_PORT"],
+        dbname=cfg["DB_NAME"],
+        user=cfg["DB_USER"],
+        password=cfg["DB_PASSWORD"],
+    )
+    start_sql = pd.to_datetime(start_date).date().isoformat()
+    end_sql = pd.to_datetime(end_date).date().isoformat()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                f"""
+                select
+                    store_number::text as store,
+                    employee_name as server,
+                    store_label,
+                    support_staff,
+                    tablet_pct as tablet_pct,
+                    tablet_weight as tablet_weight,
+                    turn_time as turn_time,
+                    turn_check_count as turn_check_count,
+                    dine_in_bev_pct as dine_in_bev_pct,
+                    bev_weight as bev_weight,
+                    ppa as ppa,
+                    ppa_weight as ppa_weight,
+                    net_sales
+                from public.foh_daily_metrics
+                where business_date between date '{start_sql}' and date '{end_sql}'
+                  and store_number in (3231, 4445, 4456, 4463)
+                order by business_date, store_number, employee_name
                 """
             )
             rows = cur.fetchall()
@@ -415,6 +492,62 @@ def weighted_mean(df, value_col, weight_col, default=pd.NA):
         return default
 
     return (working[value_col] * working[weight_col]).sum() / working[weight_col].sum()
+
+
+def aggregate_period_metrics(df):
+    if df.empty:
+        return pd.DataFrame(columns=[
+            "Store", "Server", "Tablet %", "Tablet Weight", "Turn Time", "Turn Check Count",
+            "Dine In Bev %", "Bev Weight", "PPA", "PPA Weight", "net_sales", "_support_staff"
+        ])
+
+    records = []
+    for (store, server), group in df.groupby(["Store", "Server"], dropna=False):
+        records.append({
+            "Store": store,
+            "Server": server,
+            "Tablet %": weighted_mean(group, "Tablet %", "Tablet Weight", default=safe_mean(group["Tablet %"])),
+            "Tablet Weight": pd.to_numeric(group.get("Tablet Weight"), errors="coerce").sum(min_count=1),
+            "Turn Time": weighted_mean(group, "Turn Time", "Turn Check Count", default=safe_mean(group["Turn Time"])),
+            "Turn Check Count": pd.to_numeric(group.get("Turn Check Count"), errors="coerce").sum(min_count=1),
+            "Dine In Bev %": weighted_mean(group, "Dine In Bev %", "Bev Weight", default=safe_mean(group["Dine In Bev %"])),
+            "Bev Weight": pd.to_numeric(group.get("Bev Weight"), errors="coerce").sum(min_count=1),
+            "PPA": weighted_mean(group, "PPA", "PPA Weight", default=safe_mean(group["PPA"])),
+            "PPA Weight": pd.to_numeric(group.get("PPA Weight"), errors="coerce").sum(min_count=1),
+            "net_sales": pd.to_numeric(group.get("net_sales"), errors="coerce").sum(min_count=1),
+            "_support_staff": group["_support_staff"].fillna(False).astype(bool).any(),
+        })
+    return pd.DataFrame(records)
+
+
+def get_week_windows(selected_date):
+    selected = pd.to_datetime(selected_date).date()
+    wtd_start = selected - timedelta(days=selected.weekday())
+    prev_week_end = wtd_start - timedelta(days=1)
+    prev_week_start = prev_week_end - timedelta(days=6)
+    return wtd_start, selected, prev_week_start, prev_week_end
+
+
+def metric_trend_symbol(current, previous, metric_name):
+    if pd.isna(current) or pd.isna(previous):
+        return ""
+
+    if metric_name == "Turn Time":
+        if abs(current - previous) <= 1.0:
+            return " •"
+        return " ▲" if current < previous else " ▼"
+
+    if metric_name == "Dine In Bev %":
+        if abs(current - previous) <= 0.003:
+            return " •"
+        return " ▲" if current > previous else " ▼"
+
+    if metric_name == "PPA":
+        if abs(current - previous) <= 0.25:
+            return " •"
+        return " ▲" if current > previous else " ▼"
+
+    return ""
 
 
 def format_single_rank_line(df, column, label, ascending=False):
@@ -937,7 +1070,7 @@ def greens_count(row):
 # =========================
 # WhatsApp Card Export
 # =========================
-def create_whatsapp_store_card(store_label, store_df):
+def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=None, trend_note=None):
     avg_turn = weighted_mean(store_df, "Turn Time", "Turn Check Count", default=safe_mean(store_df["Turn Time"]))
     avg_bev = weighted_mean(store_df, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df["Dine In Bev %"]))
     avg_ppa = weighted_mean(store_df, "PPA", "PPA Weight", default=safe_mean(store_df["PPA"]))
@@ -959,24 +1092,31 @@ def create_whatsapp_store_card(store_label, store_df):
 
     export_df = card_df.copy()
 
-    def export_turn_text(x):
+    trend_lookup = {}
+    if trend_df is not None and not trend_df.empty:
+        trend_lookup = trend_df.set_index("Server")[["Turn Time", "Dine In Bev %", "PPA"]].to_dict("index")
+
+    def export_turn_text(server, x):
         if pd.isna(x):
             return ""
-        return f"{x:.2f}"
+        previous = trend_lookup.get(server, {}).get("Turn Time", pd.NA)
+        return f"{x:.2f}{metric_trend_symbol(x, previous, 'Turn Time')}"
 
-    def export_bev_text(x):
+    def export_bev_text(server, x):
         if pd.isna(x):
             return ""
-        return f"{x:.2%}"
+        previous = trend_lookup.get(server, {}).get("Dine In Bev %", pd.NA)
+        return f"{x:.2%}{metric_trend_symbol(x, previous, 'Dine In Bev %')}"
 
-    def export_ppa_text(x):
+    def export_ppa_text(server, x):
         if pd.isna(x):
             return ""
-        return f"${x:.2f}"
+        previous = trend_lookup.get(server, {}).get("PPA", pd.NA)
+        return f"${x:.2f}{metric_trend_symbol(x, previous, 'PPA')}"
 
-    export_df["Turn Time"] = export_df["Turn Time"].apply(export_turn_text)
-    export_df["Dine In Bev %"] = export_df["Dine In Bev %"].apply(export_bev_text)
-    export_df["PPA"] = export_df["PPA"].apply(export_ppa_text)
+    export_df["Turn Time"] = export_df.apply(lambda r: export_turn_text(r["Server"], r["Turn Time"]), axis=1)
+    export_df["Dine In Bev %"] = export_df.apply(lambda r: export_bev_text(r["Server"], r["Dine In Bev %"]), axis=1)
+    export_df["PPA"] = export_df.apply(lambda r: export_ppa_text(r["Server"], r["PPA"]), axis=1)
 
     badge_df = card_df.copy()
     badge_df["_turn_green"] = badge_df["Turn Time"].apply(is_turn_green)
@@ -1019,7 +1159,8 @@ def create_whatsapp_store_card(store_label, store_df):
         ("COACH", "Needs Coaching"),
         ("SLOWEST TURN", "Slowest Turn"),
     ]
-    fig_height = max(9.1, 4.8 + (row_count * 0.40))
+    footer_lines = 1 + (1 if trend_note else 0)
+    fig_height = max(9.4, 5.0 + (row_count * 0.40) + (0.18 * footer_lines))
     fig, ax = plt.subplots(figsize=(8.2, fig_height))
     fig.patch.set_facecolor("white")
     ax.set_axis_off()
@@ -1050,6 +1191,18 @@ def create_whatsapp_store_card(store_label, store_df):
         va="center",
         zorder=2
     )
+
+    if subtitle:
+        ax.text(
+            0.03, 0.905, subtitle,
+            transform=ax.transAxes,
+            fontsize=9.4,
+            color="#dbeafe",
+            ha="left",
+            va="top",
+            zorder=2,
+            style="italic",
+        )
 
     lane_y = 0.67
     lane_h = 0.16
@@ -1240,17 +1393,23 @@ def create_whatsapp_store_card(store_label, store_df):
             zorder=4,
         )
 
-    ax.text(
-        0.50,
-        0.072,
-        "Needs Coaching = missed Turn, Dine In Bev %, and PPA",
-        transform=ax.transAxes,
-        fontsize=8.4,
-        color="#64748b",
-        ha="center",
-        va="center",
-        zorder=4,
-    )
+    notes = ["Needs Coaching = missed Turn, Dine In Bev %, and PPA"]
+    if trend_note:
+        notes.append(trend_note)
+    note_y = 0.072
+    for note in notes:
+        ax.text(
+            0.50,
+            note_y,
+            note,
+            transform=ax.transAxes,
+            fontsize=8.4,
+            color="#64748b",
+            ha="center",
+            va="center",
+            zorder=4,
+        )
+        note_y -= 0.025
 
     return fig
 
@@ -1258,7 +1417,7 @@ def create_whatsapp_store_card(store_label, store_df):
 # =========================
 # Shared Dashboard Rendering
 # =========================
-def render_combined_dashboard(combined):
+def render_combined_dashboard(combined, card_combined_by_store=None, card_trend_by_store=None, card_subtitle=None, card_trend_note=None):
     if combined.empty:
         st.warning("No valid data could be processed.")
         return
@@ -1409,7 +1568,15 @@ def render_combined_dashboard(combined):
 
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-        card_fig = create_whatsapp_store_card(store_label, store_df)
+        card_store_df = card_combined_by_store.get(store, store_df) if card_combined_by_store else store_df
+        card_trend_df = card_trend_by_store.get(store) if card_trend_by_store else None
+        card_fig = create_whatsapp_store_card(
+            store_label,
+            card_store_df,
+            subtitle=card_subtitle,
+            trend_df=card_trend_df,
+            trend_note=card_trend_note,
+        )
         card_buf = fig_to_png_bytes(card_fig)
         safe_store_label = store_label.replace(" - ", "_").replace(" ", "_")
 
@@ -1442,7 +1609,25 @@ if data_source == "FOH Database":
             )
             combined = load_foh_metrics_for_date(selected_date)
             st.caption(f"Showing FOH database data for {pd.to_datetime(selected_date).strftime('%B %-d, %Y')} across the priority stores.")
-            render_combined_dashboard(combined.copy())
+            st.info("WhatsApp cards are currently in WTD test mode for FOH Database runs. The on-screen grid remains daily.")
+            wtd_start, wtd_end, prev_week_start, prev_week_end = get_week_windows(selected_date)
+            wtd_combined = aggregate_period_metrics(load_foh_metrics_between(wtd_start, wtd_end))
+            prev_week_combined = aggregate_period_metrics(load_foh_metrics_between(prev_week_start, prev_week_end))
+            card_by_store = {
+                store: wtd_combined[wtd_combined["Store"] == store].copy()
+                for store in sorted(wtd_combined["Store"].dropna().unique())
+            }
+            trend_by_store = {
+                store: prev_week_combined[prev_week_combined["Store"] == store].copy()
+                for store in sorted(prev_week_combined["Store"].dropna().unique())
+            }
+            render_combined_dashboard(
+                combined.copy(),
+                card_combined_by_store=card_by_store,
+                card_trend_by_store=trend_by_store,
+                card_subtitle=f"Week to Date through {pd.to_datetime(selected_date).strftime('%b %-d, %Y')}",
+                card_trend_note="Trend vs prior full week average (Mon-Sun)",
+            )
 elif tablet_files or turn_files or beverage_files or ppa_files:
     if beverage_files and len(beverage_files) > 1:
         st.warning("Multiple Contest Detail files uploaded. Using only the most recent file for Dine-In Bev %.")
