@@ -694,26 +694,61 @@ def get_week_windows(selected_date):
     return wtd_start, selected, prev_week_start, prev_week_end
 
 
-def metric_trend_symbol(current, previous, metric_name):
-    if pd.isna(current) or pd.isna(previous):
-        return ""
+TREND_GUARDS = {
+    "Turn Time": {"weight_col": "Turn Check Count", "row_min_weight": 3, "store_min_weight": 12, "flat_threshold": 1.0},
+    "Dine In Bev %": {"weight_col": "Bev Weight", "row_min_weight": 100.0, "store_min_weight": 400.0, "flat_threshold": 0.003},
+    "PPA": {"weight_col": "PPA Weight", "row_min_weight": 8.0, "store_min_weight": 30.0, "flat_threshold": 0.25},
+}
 
+
+def metric_improvement_delta(current, previous, metric_name):
+    if pd.isna(current) or pd.isna(previous):
+        return pd.NA
     if metric_name == "Turn Time":
-        if abs(current - previous) <= 1.0:
-            return " •"
-        return " ▲" if current < previous else " ▼"
+        return previous - current
+    return current - previous
+
+
+def metric_baseline_allowed(previous, previous_weight, metric_name, scope="row"):
+    if pd.isna(previous) or pd.isna(previous_weight):
+        return False
+    config = TREND_GUARDS.get(metric_name, {})
+    threshold_key = "store_min_weight" if scope == "store" else "row_min_weight"
+    min_weight = config.get(threshold_key, 0)
+    return previous_weight >= min_weight
+
+
+def metric_delta_components(current, previous, previous_weight, metric_name, scope="row"):
+    if not metric_baseline_allowed(previous, previous_weight, metric_name, scope=scope):
+        return "", None
+
+    config = TREND_GUARDS[metric_name]
+    delta = metric_improvement_delta(current, previous, metric_name)
+    if pd.isna(delta):
+        return "", None
 
     if metric_name == "Dine In Bev %":
-        if abs(current - previous) <= 0.003:
-            return " •"
-        return " ▲" if current > previous else " ▼"
+        display_delta = abs(delta) * 100.0
+        precision = 1
+    else:
+        display_delta = abs(delta)
+        precision = 1
 
-    if metric_name == "PPA":
-        if abs(current - previous) <= 0.25:
-            return " •"
-        return " ▲" if current > previous else " ▼"
+    if abs(delta) <= config["flat_threshold"]:
+        return f" •{display_delta:.{precision}f}", "#64748b"
 
-    return ""
+    if delta > 0:
+        return f" ▲{display_delta:.{precision}f}", "#16a34a"
+    return f" ▼{display_delta:.{precision}f}", "#dc2626"
+
+
+def metric_kpi_delta_text(current, previous, previous_weight, metric_name):
+    text, color = metric_delta_components(current, previous, previous_weight, metric_name, scope="store")
+    if not text:
+        return "", None
+    if text.startswith(" •"):
+        return "• Flat vs LW", color
+    return f"{text.strip()} vs LW", color
 
 
 def format_single_rank_line(df, column, label, ascending=False):
@@ -1240,6 +1275,12 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     avg_turn = weighted_mean(store_df, "Turn Time", "Turn Check Count", default=safe_mean(store_df["Turn Time"]))
     avg_bev = weighted_mean(store_df, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df["Dine In Bev %"]))
     avg_ppa = weighted_mean(store_df, "PPA", "PPA Weight", default=safe_mean(store_df["PPA"]))
+    prev_avg_turn = weighted_mean(trend_df, "Turn Time", "Turn Check Count", default=safe_mean(trend_df["Turn Time"])) if trend_df is not None and not trend_df.empty else pd.NA
+    prev_avg_bev = weighted_mean(trend_df, "Dine In Bev %", "Bev Weight", default=safe_mean(trend_df["Dine In Bev %"])) if trend_df is not None and not trend_df.empty else pd.NA
+    prev_avg_ppa = weighted_mean(trend_df, "PPA", "PPA Weight", default=safe_mean(trend_df["PPA"])) if trend_df is not None and not trend_df.empty else pd.NA
+    prev_turn_weight = pd.to_numeric(trend_df.get("Turn Check Count"), errors="coerce").sum(min_count=1) if trend_df is not None and not trend_df.empty else pd.NA
+    prev_bev_weight = pd.to_numeric(trend_df.get("Bev Weight"), errors="coerce").sum(min_count=1) if trend_df is not None and not trend_df.empty else pd.NA
+    prev_ppa_weight = pd.to_numeric(trend_df.get("PPA Weight"), errors="coerce").sum(min_count=1) if trend_df is not None and not trend_df.empty else pd.NA
 
     visible_df = store_df[~store_df["Server"].apply(is_support_staff)].copy()
     card_df = visible_df[
@@ -1260,25 +1301,33 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
 
     trend_lookup = {}
     if trend_df is not None and not trend_df.empty:
-        trend_lookup = trend_df.set_index("Server")[["Turn Time", "Dine In Bev %", "PPA"]].to_dict("index")
+        trend_lookup = trend_df.set_index("Server")[
+            ["Turn Time", "Turn Check Count", "Dine In Bev %", "Bev Weight", "PPA", "PPA Weight"]
+        ].to_dict("index")
 
     def export_turn_text(server, x):
         if pd.isna(x):
             return ""
         previous = trend_lookup.get(server, {}).get("Turn Time", pd.NA)
-        return f"{x:.2f}{metric_trend_symbol(x, previous, 'Turn Time')}"
+        previous_weight = trend_lookup.get(server, {}).get("Turn Check Count", pd.NA)
+        delta_text, _ = metric_delta_components(x, previous, previous_weight, "Turn Time", scope="row")
+        return f"{x:.2f}{delta_text}"
 
     def export_bev_text(server, x):
         if pd.isna(x):
             return ""
         previous = trend_lookup.get(server, {}).get("Dine In Bev %", pd.NA)
-        return f"{x:.2%}{metric_trend_symbol(x, previous, 'Dine In Bev %')}"
+        previous_weight = trend_lookup.get(server, {}).get("Bev Weight", pd.NA)
+        delta_text, _ = metric_delta_components(x, previous, previous_weight, "Dine In Bev %", scope="row")
+        return f"{x:.2%}{delta_text}"
 
     def export_ppa_text(server, x):
         if pd.isna(x):
             return ""
         previous = trend_lookup.get(server, {}).get("PPA", pd.NA)
-        return f"${x:.2f}{metric_trend_symbol(x, previous, 'PPA')}"
+        previous_weight = trend_lookup.get(server, {}).get("PPA Weight", pd.NA)
+        delta_text, _ = metric_delta_components(x, previous, previous_weight, "PPA", scope="row")
+        return f"${x:.2f}{delta_text}"
 
     export_df["Turn Time"] = export_df.apply(lambda r: export_turn_text(r["Server"], r["Turn Time"]), axis=1)
     export_df["Dine In Bev %"] = export_df.apply(lambda r: export_bev_text(r["Server"], r["Dine In Bev %"]), axis=1)
@@ -1383,27 +1432,32 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
             "TURN",
             "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}",
             turn_box_color(avg_turn),
+            metric_kpi_delta_text(avg_turn, prev_avg_turn, prev_turn_weight, "Turn Time"),
         ),
         (
             "BEVERAGE",
             "No data" if pd.isna(avg_bev) else f"{avg_bev:.2%}",
             beverage_box_color(avg_bev),
+            metric_kpi_delta_text(avg_bev, prev_avg_bev, prev_bev_weight, "Dine In Bev %"),
         ),
         (
             "PPA",
             "No data" if pd.isna(avg_ppa) else f"${avg_ppa:.2f}",
             ppa_box_color(avg_ppa),
+            metric_kpi_delta_text(avg_ppa, prev_avg_ppa, prev_ppa_weight, "PPA"),
         ),
         (
             "ALL GREEN",
             f"{all_green_count} of {total_servers}",
             "#b160f0",
+            ("", None),
         ),
     ]
 
     for lane_x, lane in zip(lane_xs, lane_data):
-        title, avg_value, fill_color = lane
+        title, avg_value, fill_color, delta_info = lane
         text_color = box_text_color(fill_color)
+        delta_text, delta_color = delta_info
 
         ax.add_patch(Rectangle(
             (lane_x, lane_y), lane_w, lane_h,
@@ -1435,6 +1489,19 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
             va="center",
             zorder=2
         )
+        if delta_text:
+            ax.text(
+                lane_x + lane_w / 2,
+                lane_y + 0.025,
+                delta_text,
+                transform=ax.transAxes,
+                fontsize=8.8,
+                fontweight="bold",
+                color=delta_color,
+                ha="center",
+                va="center",
+                zorder=2,
+            )
     table_bbox = [0.08, 0.18, 0.84, 0.44]
     table = ax.table(
         cellText=export_df.values,
@@ -1847,8 +1914,15 @@ if data_source == "FOH Database":
             selected_dt = pd.to_datetime(selected_date)
 
             if period_mode == "WTD":
-                wtd_start, wtd_end, _, _ = get_week_windows(selected_date)
+                wtd_start, wtd_end, prev_week_start, prev_week_end = get_week_windows(selected_date)
                 combined = aggregate_period_metrics(load_foh_metrics_between(wtd_start, wtd_end))
+                prev_week_combined = aggregate_period_metrics(
+                    load_foh_metrics_between(prev_week_start, prev_week_end)
+                )
+                card_trend_by_store = {
+                    store: df.copy()
+                    for store, df in prev_week_combined.groupby("Store", dropna=False)
+                }
                 st.caption(
                     f"Showing FOH database WTD data for the Alabama priority stores from "
                     f"{pd.to_datetime(wtd_start).strftime('%B %-d, %Y')} through {selected_dt.strftime('%B %-d, %Y')}."
@@ -1856,6 +1930,12 @@ if data_source == "FOH Database":
                 render_combined_dashboard(
                     combined.copy(),
                     card_subtitle=f"Week to Date through {selected_dt.strftime('%b %-d, %Y')}",
+                    card_trend_by_store=card_trend_by_store,
+                    card_trend_note=(
+                        f"Deltas vs LW "
+                        f"({pd.to_datetime(prev_week_start).strftime('%b %-d')} - "
+                        f"{pd.to_datetime(prev_week_end).strftime('%b %-d, %Y')})"
+                    ),
                 )
             else:
                 combined = load_foh_metrics_for_date(selected_date)
