@@ -1609,25 +1609,29 @@ if data_source == "FOH Database":
             )
             combined = load_foh_metrics_for_date(selected_date)
             st.caption(f"Showing FOH database data for {pd.to_datetime(selected_date).strftime('%B %-d, %Y')} across the priority stores.")
-            st.info("WhatsApp cards are currently in WTD test mode for FOH Database runs. The on-screen grid remains daily.")
-            wtd_start, wtd_end, prev_week_start, prev_week_end = get_week_windows(selected_date)
-            wtd_combined = aggregate_period_metrics(load_foh_metrics_between(wtd_start, wtd_end))
-            prev_week_combined = aggregate_period_metrics(load_foh_metrics_between(prev_week_start, prev_week_end))
-            card_by_store = {
-                store: wtd_combined[wtd_combined["Store"] == store].copy()
-                for store in sorted(wtd_combined["Store"].dropna().unique())
-            }
-            trend_by_store = {
-                store: prev_week_combined[prev_week_combined["Store"] == store].copy()
-                for store in sorted(prev_week_combined["Store"].dropna().unique())
-            }
-            render_combined_dashboard(
-                combined.copy(),
-                card_combined_by_store=card_by_store,
-                card_trend_by_store=trend_by_store,
-                card_subtitle=f"Week to Date through {pd.to_datetime(selected_date).strftime('%b %-d, %Y')}",
-                card_trend_note="Trend vs prior full week average (Mon-Sun)",
-            )
+            # WTD WhatsApp card experiment is intentionally disabled until we have
+            # a complete prior-week baseline to compare against.
+            #
+            # st.info("WhatsApp cards are currently in WTD test mode for FOH Database runs. The on-screen grid remains daily.")
+            # wtd_start, wtd_end, prev_week_start, prev_week_end = get_week_windows(selected_date)
+            # wtd_combined = aggregate_period_metrics(load_foh_metrics_between(wtd_start, wtd_end))
+            # prev_week_combined = aggregate_period_metrics(load_foh_metrics_between(prev_week_start, prev_week_end))
+            # card_by_store = {
+            #     store: wtd_combined[wtd_combined["Store"] == store].copy()
+            #     for store in sorted(wtd_combined["Store"].dropna().unique())
+            # }
+            # trend_by_store = {
+            #     store: prev_week_combined[prev_week_combined["Store"] == store].copy()
+            #     for store in sorted(prev_week_combined["Store"].dropna().unique())
+            # }
+            # render_combined_dashboard(
+            #     combined.copy(),
+            #     card_combined_by_store=card_by_store,
+            #     card_trend_by_store=trend_by_store,
+            #     card_subtitle=f"Week to Date through {pd.to_datetime(selected_date).strftime('%b %-d, %Y')}",
+            #     card_trend_note="Trend vs prior full week average (Mon-Sun)",
+            # )
+            render_combined_dashboard(combined.copy())
 elif tablet_files or turn_files or beverage_files or ppa_files:
     if beverage_files and len(beverage_files) > 1:
         st.warning("Multiple Contest Detail files uploaded. Using only the most recent file for Dine-In Bev %.")
