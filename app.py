@@ -1338,14 +1338,14 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     ))
 
     ax.add_patch(Rectangle(
-        (0.01, 0.91), 0.98, 0.08,
+        (0.01, 0.90), 0.98, 0.09,
         transform=ax.transAxes,
         facecolor="#1d4f91",
         edgecolor="#1d4f91",
         zorder=1
     ))
     ax.text(
-        0.50, 0.95, store_label,
+        0.50, 0.955, store_label,
         transform=ax.transAxes,
         fontsize=17,
         fontweight="bold",
@@ -1357,12 +1357,13 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
 
     if subtitle:
         ax.text(
-            0.50, 0.902,
+            0.50,
+            0.916,
             subtitle,
             transform=ax.transAxes,
-            fontsize=10.2,
-            fontweight="semibold",
-            color="#e8f1ff",
+            fontsize=10.0,
+            fontweight="bold",
+            color="#dbeafe",
             ha="center",
             va="center",
             zorder=2,
@@ -1534,34 +1535,50 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         icon_ax.imshow(icon)
         icon_ax.set_axis_off()
 
-    legend_y = 0.098
-    legend_positions = [0.10, 0.27, 0.43, 0.82]
-    for legend_x, (label, display_label) in zip(legend_positions, legend_items):
-        icon = badge_icons.get(label)
-        if icon is not None:
-            icon_ax = ax.inset_axes(
-                [legend_x - 0.03, legend_y - 0.014, 0.028, 0.028],
+    legend_rows = [
+        (
+            0.108,
+            [
+                (0.12, legend_items[0]),
+                (0.36, legend_items[1]),
+            ],
+        ),
+        (
+            0.073,
+            [
+                (0.14, legend_items[2]),
+                (0.78, legend_items[3]),
+            ],
+        ),
+    ]
+
+    for legend_y, row_items in legend_rows:
+        for legend_x, (label, display_label) in row_items:
+            icon = badge_icons.get(label)
+            if icon is not None:
+                icon_ax = ax.inset_axes(
+                    [legend_x - 0.03, legend_y - 0.014, 0.028, 0.028],
+                    transform=ax.transAxes,
+                    zorder=4,
+                )
+                icon_ax.imshow(icon)
+                icon_ax.set_axis_off()
+            ax.text(
+                legend_x,
+                legend_y,
+                display_label,
                 transform=ax.transAxes,
+                fontsize=8.7 if label == "COACH" else 9.0,
+                color="#334155",
+                ha="left",
+                va="center",
                 zorder=4,
             )
-            icon_ax.imshow(icon)
-            icon_ax.set_axis_off()
-        ax.text(
-            legend_x,
-            legend_y,
-            display_label,
-            transform=ax.transAxes,
-            fontsize=8.8,
-            color="#334155",
-            ha="left",
-            va="center",
-            zorder=4,
-        )
 
     notes = []
     if trend_note:
         notes.append(trend_note)
-    note_y = 0.068
+    note_y = 0.043
     for note in notes:
         ax.text(
             0.50,
