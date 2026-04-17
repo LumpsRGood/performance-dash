@@ -168,6 +168,11 @@ def load_foh_metrics_for_date(business_date):
     df["Server"] = df["Server"].fillna("").astype(str).str.strip()
     df = df[df["Server"] != ""].copy()
     df = df[~df["Server"].str.lower().str.contains("total", na=False)].copy()
+    if "Dine In Bev %" in df.columns:
+        bev = pd.to_numeric(df["Dine In Bev %"], errors="coerce")
+        mixed_percent_mask = bev > 1
+        if mixed_percent_mask.any():
+            df.loc[mixed_percent_mask, "Dine In Bev %"] = bev[mixed_percent_mask] / 100.0
     df["_support_staff"] = df["support_staff"].fillna(False).astype(bool) | df["Server"].apply(is_support_staff)
     return df.drop(columns=["store_label", "support_staff"], errors="ignore")
 
@@ -244,6 +249,11 @@ def load_foh_metrics_between(start_date, end_date):
     df["Server"] = df["Server"].fillna("").astype(str).str.strip()
     df = df[df["Server"] != ""].copy()
     df = df[~df["Server"].str.lower().str.contains("total", na=False)].copy()
+    if "Dine In Bev %" in df.columns:
+        bev = pd.to_numeric(df["Dine In Bev %"], errors="coerce")
+        mixed_percent_mask = bev > 1
+        if mixed_percent_mask.any():
+            df.loc[mixed_percent_mask, "Dine In Bev %"] = bev[mixed_percent_mask] / 100.0
     df["_support_staff"] = df["support_staff"].fillna(False).astype(bool) | df["Server"].apply(is_support_staff)
     return df.drop(columns=["store_label", "support_staff"], errors="ignore")
 
