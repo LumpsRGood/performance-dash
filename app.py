@@ -1550,7 +1550,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         (
             0.073,
             [
-                (0.25, legend_items[2]),
+                (0.29, legend_items[2]),
             ],
         ),
     ]
