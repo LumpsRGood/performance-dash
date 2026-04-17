@@ -1357,12 +1357,14 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
 
     if subtitle:
         ax.text(
-            0.03, 0.905, subtitle,
+            0.50, 0.902,
+            subtitle,
             transform=ax.transAxes,
-            fontsize=9.4,
-            color="#dbeafe",
-            ha="left",
-            va="top",
+            fontsize=10.2,
+            fontweight="semibold",
+            color="#e8f1ff",
+            ha="center",
+            va="center",
             zorder=2,
             style="italic",
         )
@@ -1532,8 +1534,8 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         icon_ax.imshow(icon)
         icon_ax.set_axis_off()
 
-    legend_y = 0.105
-    legend_positions = [0.12, 0.35, 0.58, 0.79]
+    legend_y = 0.108
+    legend_positions = [0.12, 0.32, 0.50, 0.78]
     for legend_x, (label, display_label) in zip(legend_positions, legend_items):
         icon = badge_icons.get(label)
         if icon is not None:
@@ -1559,14 +1561,14 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     notes = ["Needs Coaching = missed Turn, Dine In Bev %, and PPA"]
     if trend_note:
         notes.append(trend_note)
-    note_y = 0.072
+    note_y = 0.074
     for note in notes:
         ax.text(
             0.50,
             note_y,
-            note,
+            note.replace("Needs Coaching = missed Turn, Dine In Bev %, and PPA", "Needs Coaching (missed Turn, Bev %, and PPA)"),
             transform=ax.transAxes,
-            fontsize=8.4,
+            fontsize=8.8,
             color="#64748b",
             ha="center",
             va="center",
