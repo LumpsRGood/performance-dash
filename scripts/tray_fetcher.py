@@ -1,3 +1,4 @@
+import ctypes
 import os
 import subprocess
 import sys
@@ -34,7 +35,29 @@ def ensure_playwright_chromium():
         raise RuntimeError(f"Unable to install Playwright Chromium automatically. {detail}")
 
 
+def ensure_linux_browser_libs():
+    required_libs = [
+        "libglib-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libnss3.so",
+        "libnspr4.so",
+    ]
+    missing = []
+    for lib_name in required_libs:
+        try:
+            ctypes.CDLL(lib_name)
+        except OSError:
+            missing.append(lib_name)
+    if missing:
+        raise RuntimeError(
+            "Tray automation is not supported on this host because required browser libraries are missing: "
+            + ", ".join(missing)
+            + ". Rosnet refresh can run in-app, but Tray refresh needs a different host (or local run) with Chromium dependencies installed."
+        )
+
+
 def launch_browser_with_install(playwright, headless):
+    ensure_linux_browser_libs()
     try:
         return playwright.chromium.launch(headless=headless)
     except PlaywrightError as exc:

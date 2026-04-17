@@ -3,6 +3,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import ctypes
 from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
@@ -77,6 +78,22 @@ def get_secret_or_env(key, default=None):
     except Exception:
         pass
     return os.getenv(key, default)
+
+
+def tray_runtime_supported():
+    required_libs = [
+        "libglib-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libnss3.so",
+        "libnspr4.so",
+    ]
+    missing = []
+    for lib_name in required_libs:
+        try:
+            ctypes.CDLL(lib_name)
+        except OSError:
+            missing.append(lib_name)
+    return len(missing) == 0, missing
 
 
 def load_recent_import_runs(limit=12):
@@ -1749,18 +1766,25 @@ if data_source == "FOH Database":
             recent_dates = load_available_business_dates()
             default_refresh_date = pd.to_datetime(recent_dates[0]).date() if recent_dates else pd.Timestamp.today().date()
             refresh_date = st.date_input("Refresh business date", value=default_refresh_date, key="refresh_business_date")
+            tray_ok, tray_missing_libs = tray_runtime_supported()
+            if not tray_ok:
+                st.warning(
+                    "Tray refresh is not available on this deployment host because required browser libraries are missing: "
+                    + ", ".join(tray_missing_libs)
+                    + ". Rosnet refresh can run here, but Tray refresh needs a different host or a local run for now."
+                )
             c1, c2, c3 = st.columns(3)
             if c1.button("Run Rosnet Import", use_container_width=True):
                 with st.spinner("Running Rosnet import..."):
                     st.session_state["last_refresh_result"] = run_refresh_job("rosnet", refresh_date)
                 st.cache_data.clear()
                 st.rerun()
-            if c2.button("Run Tray Import", use_container_width=True):
+            if c2.button("Run Tray Import", use_container_width=True, disabled=not tray_ok):
                 with st.spinner("Running Tray import..."):
                     st.session_state["last_refresh_result"] = run_refresh_job("tray", refresh_date)
                 st.cache_data.clear()
                 st.rerun()
-            if c3.button("Run Full Refresh", use_container_width=True):
+            if c3.button("Run Full Refresh", use_container_width=True, disabled=not tray_ok):
                 with st.spinner("Running Rosnet + Tray refresh..."):
                     st.session_state["last_refresh_result"] = run_full_refresh(refresh_date)
                 st.cache_data.clear()
