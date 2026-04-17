@@ -1,8 +1,10 @@
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from dotenv import dotenv_values
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parent
@@ -18,6 +20,29 @@ def load_tray_credentials(env_file=DEFAULT_ENV_FILE):
     if not username or not password:
         raise ValueError(f"Missing TRAY_USERNAME or TRAY_PASSWORD in {env_file}")
     return username, password
+
+
+def ensure_playwright_chromium():
+    result = subprocess.run(
+        [sys.executable, "-m", "playwright", "install", "chromium"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"Unable to install Playwright Chromium automatically. {detail}")
+
+
+def launch_browser_with_install(playwright, headless):
+    try:
+        return playwright.chromium.launch(headless=headless)
+    except PlaywrightError as exc:
+        message = str(exc)
+        if "Executable doesn't exist" not in message:
+            raise
+        ensure_playwright_chromium()
+        return playwright.chromium.launch(headless=headless)
 
 
 def _date_mmddyyyy(business_date):
@@ -113,7 +138,7 @@ def fetch_tray_report(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=not debug_visible)
+        browser = launch_browser_with_install(p, headless=not debug_visible)
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
 
