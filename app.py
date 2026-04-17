@@ -14,6 +14,10 @@ st.set_page_config(page_title="FOH Performance Dashboard", layout="wide")
 
 st.title("FOH Performance Dashboard")
 st.caption("Use the FOH database for the priority stores, or fall back to uploads when needed.")
+st.error(
+    "Automation Warning: Automated refresh is currently configured only for the Alabama market. "
+    "If you are outside the Alabama market, please use Manual Uploads for now."
+)
 
 # =========================
 # Preferred Store Mapping
