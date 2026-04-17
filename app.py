@@ -110,18 +110,18 @@ def load_foh_metrics_for_date(business_date):
             cur.execute(
                 """
                 select
-                    store_number::text as "Store",
-                    employee_name as "Server",
+                    store_number::text as store,
+                    employee_name as server,
                     store_label,
                     support_staff,
-                    tablet_pct as "Tablet %",
-                    tablet_weight as "Tablet Weight",
-                    turn_time as "Turn Time",
-                    turn_check_count as "Turn Check Count",
-                    dine_in_bev_pct as "Dine In Bev %",
-                    bev_weight as "Bev Weight",
-                    ppa as "PPA",
-                    ppa_weight as "PPA Weight",
+                    tablet_pct as tablet_pct,
+                    tablet_weight as tablet_weight,
+                    turn_time as turn_time,
+                    turn_check_count as turn_check_count,
+                    dine_in_bev_pct as dine_in_bev_pct,
+                    bev_weight as bev_weight,
+                    ppa as ppa,
+                    ppa_weight as ppa_weight,
                     net_sales
                 from public.foh_daily_metrics
                 where business_date = %s
@@ -140,6 +140,21 @@ def load_foh_metrics_for_date(business_date):
 
     if df.empty:
         return df
+
+    df = df.rename(
+        columns={
+            "store": "Store",
+            "server": "Server",
+            "tablet_pct": "Tablet %",
+            "tablet_weight": "Tablet Weight",
+            "turn_time": "Turn Time",
+            "turn_check_count": "Turn Check Count",
+            "dine_in_bev_pct": "Dine In Bev %",
+            "bev_weight": "Bev Weight",
+            "ppa": "PPA",
+            "ppa_weight": "PPA Weight",
+        }
+    )
 
     for _, row in df[["Store", "store_label"]].dropna(subset=["Store"]).drop_duplicates().iterrows():
         register_store_label(row["Store"], row["store_label"])
