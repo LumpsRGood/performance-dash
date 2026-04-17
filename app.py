@@ -742,13 +742,26 @@ def metric_delta_components(current, previous, previous_weight, metric_name, sco
     return f" ▼{display_delta:.{precision}f}", "#dc2626"
 
 
+def metric_row_trend_marker(current, previous, previous_weight, metric_name):
+    text, _ = metric_delta_components(current, previous, previous_weight, metric_name, scope="row")
+    if not text:
+        return ""
+    if text.startswith(" •"):
+        return " •"
+    if text.startswith(" ▲"):
+        return " ▲"
+    if text.startswith(" ▼"):
+        return " ▼"
+    return ""
+
+
 def metric_kpi_delta_text(current, previous, previous_weight, metric_name):
     text, color = metric_delta_components(current, previous, previous_weight, metric_name, scope="store")
     if not text:
         return "", None
     if text.startswith(" •"):
-        return "• Flat vs LW", color
-    return f"{text.strip()} vs LW", color
+        return "• Flat", color
+    return text.strip(), color
 
 
 def format_single_rank_line(df, column, label, ascending=False):
@@ -1310,24 +1323,24 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
             return ""
         previous = trend_lookup.get(server, {}).get("Turn Time", pd.NA)
         previous_weight = trend_lookup.get(server, {}).get("Turn Check Count", pd.NA)
-        delta_text, _ = metric_delta_components(x, previous, previous_weight, "Turn Time", scope="row")
-        return f"{x:.2f}{delta_text}"
+        trend_marker = metric_row_trend_marker(x, previous, previous_weight, "Turn Time")
+        return f"{x:.2f}{trend_marker}"
 
     def export_bev_text(server, x):
         if pd.isna(x):
             return ""
         previous = trend_lookup.get(server, {}).get("Dine In Bev %", pd.NA)
         previous_weight = trend_lookup.get(server, {}).get("Bev Weight", pd.NA)
-        delta_text, _ = metric_delta_components(x, previous, previous_weight, "Dine In Bev %", scope="row")
-        return f"{x:.2%}{delta_text}"
+        trend_marker = metric_row_trend_marker(x, previous, previous_weight, "Dine In Bev %")
+        return f"{x:.2%}{trend_marker}"
 
     def export_ppa_text(server, x):
         if pd.isna(x):
             return ""
         previous = trend_lookup.get(server, {}).get("PPA", pd.NA)
         previous_weight = trend_lookup.get(server, {}).get("PPA Weight", pd.NA)
-        delta_text, _ = metric_delta_components(x, previous, previous_weight, "PPA", scope="row")
-        return f"${x:.2f}{delta_text}"
+        trend_marker = metric_row_trend_marker(x, previous, previous_weight, "PPA")
+        return f"${x:.2f}{trend_marker}"
 
     export_df["Turn Time"] = export_df.apply(lambda r: export_turn_text(r["Server"], r["Turn Time"]), axis=1)
     export_df["Dine In Bev %"] = export_df.apply(lambda r: export_bev_text(r["Server"], r["Dine In Bev %"]), axis=1)
@@ -1932,7 +1945,7 @@ if data_source == "FOH Database":
                     card_subtitle=f"Week to Date through {selected_dt.strftime('%b %-d, %Y')}",
                     card_trend_by_store=card_trend_by_store,
                     card_trend_note=(
-                        f"Deltas vs LW "
+                        f"KPIs = change vs LW | row arrows = trend vs LW "
                         f"({pd.to_datetime(prev_week_start).strftime('%b %-d')} - "
                         f"{pd.to_datetime(prev_week_end).strftime('%b %-d, %Y')})"
                     ),
