@@ -1890,8 +1890,14 @@ if data_source == "FOH Database":
         with st.expander("Admin: Refresh Alabama Data", expanded=False):
             st.caption("Runs the Alabama priority-store import jobs for 3231, 4445, 4456, and 4463.")
             recent_dates = load_available_business_dates()
-            default_refresh_date = pd.to_datetime(recent_dates[0]).date() if recent_dates else pd.Timestamp.today().date()
+            default_refresh_date = (pd.Timestamp.now(tz="America/Chicago") - timedelta(days=1)).date()
             refresh_date = st.date_input("Refresh business date", value=default_refresh_date, key="refresh_business_date")
+            loaded_date_set = {pd.to_datetime(x).date() for x in recent_dates}
+            if refresh_date in loaded_date_set:
+                st.warning(
+                    f"Data already exists for {pd.to_datetime(refresh_date).strftime('%b %-d, %Y')}. "
+                    "Running refresh again will update/overwrite that day."
+                )
             tray_ok, tray_missing_libs = tray_runtime_supported()
             if not tray_ok:
                 st.warning(
