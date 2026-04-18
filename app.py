@@ -1272,6 +1272,18 @@ def box_text_color(fill_color):
     return "#222222"
 
 
+def is_turn_red(x):
+    return pd.notna(x) and x > 45
+
+
+def is_bev_red(x):
+    return pd.notna(x) and x < 0.18
+
+
+def is_ppa_red(x):
+    return pd.notna(x) and x < 20
+
+
 def greens_count(row):
     count = 0
     if is_tablet_green(row["Tablet %"]):
@@ -1345,6 +1357,9 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     badge_df["_turn_green"] = badge_df["Turn Time"].apply(is_turn_green)
     badge_df["_bev_green"] = badge_df["Dine In Bev %"].apply(is_bev_green)
     badge_df["_ppa_green"] = badge_df["PPA"].apply(is_ppa_green) if ppa_available else True
+    badge_df["_turn_red"] = badge_df["Turn Time"].apply(is_turn_red)
+    badge_df["_bev_red"] = badge_df["Dine In Bev %"].apply(is_bev_red)
+    badge_df["_ppa_red"] = badge_df["PPA"].apply(is_ppa_red) if ppa_available else True
     badge_df["_pass_count"] = (
         badge_df["_turn_green"].astype(int)
         + badge_df["_bev_green"].astype(int)
@@ -1364,7 +1379,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         ]:
             badge_by_row.setdefault(idx, ("ALL GREEN", "#22c55e", "#111827"))
 
-        coach_mask = (~badge_df["_turn_green"]) & (~badge_df["_bev_green"]) & (~badge_df["_ppa_green"])
+        coach_mask = badge_df["_turn_red"] & badge_df["_bev_red"] & badge_df["_ppa_red"]
         for idx in badge_df.index[coach_mask]:
             badge_by_row.setdefault(idx, ("COACH", "#facc15", "#111827"))
 
