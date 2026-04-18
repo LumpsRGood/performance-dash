@@ -695,6 +695,7 @@ def get_week_windows(selected_date):
 
 
 TREND_GUARDS = {
+    "Tablet %": {"weight_col": "Tablet Weight", "row_min_weight": 100.0, "store_min_weight": 400.0, "flat_threshold": 0.01},
     "Turn Time": {"weight_col": "Turn Check Count", "row_min_weight": 3, "store_min_weight": 12, "flat_threshold": 1.0},
     "Dine In Bev %": {"weight_col": "Bev Weight", "row_min_weight": 100.0, "store_min_weight": 400.0, "flat_threshold": 0.003},
     "PPA": {"weight_col": "PPA Weight", "row_min_weight": 8.0, "store_min_weight": 30.0, "flat_threshold": 0.25},
@@ -1301,12 +1302,15 @@ def greens_count(row):
 # WhatsApp Card Export
 # =========================
 def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=None, trend_note=None):
+    avg_tablet = weighted_mean(store_df, "Tablet %", "Tablet Weight", default=safe_mean(store_df["Tablet %"]))
     avg_turn = weighted_mean(store_df, "Turn Time", "Turn Check Count", default=safe_mean(store_df["Turn Time"]))
     avg_bev = weighted_mean(store_df, "Dine In Bev %", "Bev Weight", default=safe_mean(store_df["Dine In Bev %"]))
     avg_ppa = weighted_mean(store_df, "PPA", "PPA Weight", default=safe_mean(store_df["PPA"]))
+    prev_avg_tablet = weighted_mean(trend_df, "Tablet %", "Tablet Weight", default=safe_mean(trend_df["Tablet %"])) if trend_df is not None and not trend_df.empty else pd.NA
     prev_avg_turn = weighted_mean(trend_df, "Turn Time", "Turn Check Count", default=safe_mean(trend_df["Turn Time"])) if trend_df is not None and not trend_df.empty else pd.NA
     prev_avg_bev = weighted_mean(trend_df, "Dine In Bev %", "Bev Weight", default=safe_mean(trend_df["Dine In Bev %"])) if trend_df is not None and not trend_df.empty else pd.NA
     prev_avg_ppa = weighted_mean(trend_df, "PPA", "PPA Weight", default=safe_mean(trend_df["PPA"])) if trend_df is not None and not trend_df.empty else pd.NA
+    prev_tablet_weight = pd.to_numeric(trend_df.get("Tablet Weight"), errors="coerce").sum(min_count=1) if trend_df is not None and not trend_df.empty else pd.NA
     prev_turn_weight = pd.to_numeric(trend_df.get("Turn Check Count"), errors="coerce").sum(min_count=1) if trend_df is not None and not trend_df.empty else pd.NA
     prev_bev_weight = pd.to_numeric(trend_df.get("Bev Weight"), errors="coerce").sum(min_count=1) if trend_df is not None and not trend_df.empty else pd.NA
     prev_ppa_weight = pd.to_numeric(trend_df.get("PPA Weight"), errors="coerce").sum(min_count=1) if trend_df is not None and not trend_df.empty else pd.NA
@@ -1452,6 +1456,12 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
 
     lane_data = [
         (
+            "TABLET USE",
+            "No data" if pd.isna(avg_tablet) else f"{avg_tablet:.2%}",
+            tablet_box_color(avg_tablet),
+            metric_kpi_delta_text(avg_tablet, prev_avg_tablet, prev_tablet_weight, "Tablet %"),
+        ),
+        (
             "TURN",
             "No data" if pd.isna(avg_turn) else f"{avg_turn:.2f}",
             turn_box_color(avg_turn),
@@ -1468,12 +1478,6 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
             "No data" if pd.isna(avg_ppa) else f"${avg_ppa:.2f}",
             ppa_box_color(avg_ppa),
             metric_kpi_delta_text(avg_ppa, prev_avg_ppa, prev_ppa_weight, "PPA"),
-        ),
-        (
-            "ALL GREEN",
-            f"{all_green_count} of {total_servers}",
-            "#b160f0",
-            ("", None),
         ),
     ]
 
