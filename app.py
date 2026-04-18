@@ -1335,8 +1335,13 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     trend_lookup = {}
     if trend_df is not None and not trend_df.empty:
         trend_lookup = trend_df.set_index("Server")[
-            ["Turn Time", "Turn Check Count", "Dine In Bev %", "Bev Weight", "PPA", "PPA Weight"]
+            ["Tablet %", "Tablet Weight", "Turn Time", "Turn Check Count", "Dine In Bev %", "Bev Weight", "PPA", "PPA Weight"]
         ].to_dict("index")
+
+    def export_tablet_text(server, x):
+        if pd.isna(x):
+            return ""
+        return f"{x:.2%}"
 
     def export_turn_text(server, x):
         if pd.isna(x):
@@ -1353,6 +1358,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
             return ""
         return f"${x:.2f}"
 
+    export_df["Tablet %"] = export_df.apply(lambda r: export_tablet_text(r["Server"], r["Tablet %"]), axis=1)
     export_df["Turn Time"] = export_df.apply(lambda r: export_turn_text(r["Server"], r["Turn Time"]), axis=1)
     export_df["Dine In Bev %"] = export_df.apply(lambda r: export_bev_text(r["Server"], r["Dine In Bev %"]), axis=1)
     export_df["PPA"] = export_df.apply(lambda r: export_ppa_text(r["Server"], r["PPA"]), axis=1)
@@ -1392,7 +1398,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
             slowest_idx = slow_turn.idxmax()
             badge_by_row[slowest_idx] = ("SLOWEST TURN", "#ef4444", "white")
 
-    export_df = export_df[["Server", "Turn Time", "Dine In Bev %", "PPA"]].copy()
+    export_df = export_df[["Server", "Tablet %", "Turn Time", "Dine In Bev %", "PPA"]].copy()
 
     row_count = len(export_df)
     legend_items = [
@@ -1536,7 +1542,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         cellLoc="left",
         loc="center",
         bbox=table_bbox,
-        colWidths=[0.36, 0.18, 0.24, 0.22],
+        colWidths=[0.30, 0.16, 0.16, 0.21, 0.17],
     )
 
     table.auto_set_font_size(False)
@@ -1567,7 +1573,20 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         server_cell.get_text().set_ha("left")
         server_cell.get_text().set_x(0.03)
 
-        turn_cell = table[row_idx, 1]
+        tablet_cell = table[row_idx, 1]
+        tablet_val = original_row["Tablet %"]
+        if pd.notna(tablet_val):
+            if tablet_val >= 0.90:
+                tablet_cell.set_facecolor("#6fdc8c")
+                tablet_cell.set_text_props(weight="bold", color="black")
+            elif tablet_val >= 0.80:
+                tablet_cell.set_facecolor("#ffe066")
+                tablet_cell.set_text_props(weight="bold", color="black")
+            else:
+                tablet_cell.set_facecolor("#ff6b6b")
+                tablet_cell.set_text_props(weight="bold", color="white")
+
+        turn_cell = table[row_idx, 2]
         turn_val = original_row["Turn Time"]
         if pd.notna(turn_val):
             if turn_val <= 40:
@@ -1580,7 +1599,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
                 turn_cell.set_facecolor("#ff6b6b")
                 turn_cell.set_text_props(weight="bold", color="white")
 
-        bev_cell = table[row_idx, 2]
+        bev_cell = table[row_idx, 3]
         bev_val = original_row["Dine In Bev %"]
         if pd.notna(bev_val):
             if bev_val >= 0.19:
@@ -1593,7 +1612,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
                 bev_cell.set_facecolor("#ff6b6b")
                 bev_cell.set_text_props(weight="bold", color="white")
 
-        ppa_cell = table[row_idx, 3]
+        ppa_cell = table[row_idx, 4]
         ppa_val = original_row["PPA"]
         if pd.notna(ppa_val):
             if ppa_val >= 21:
@@ -1635,9 +1654,10 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     for row_idx in range(1, len(export_df) + 1):
         original_row = card_df.iloc[row_idx - 1]
         for col_idx, metric_name, weight_name in [
-            (1, "Turn Time", "Turn Check Count"),
-            (2, "Dine In Bev %", "Bev Weight"),
-            (3, "PPA", "PPA Weight"),
+            (1, "Tablet %", "Tablet Weight"),
+            (2, "Turn Time", "Turn Check Count"),
+            (3, "Dine In Bev %", "Bev Weight"),
+            (4, "PPA", "PPA Weight"),
         ]:
             metric_cell = table[row_idx, col_idx]
             current_value = original_row.get(metric_name, pd.NA)
