@@ -106,6 +106,38 @@ def _select_visible_text(page, label_text, option_text):
     page.keyboard.press("Escape")
 
 
+def _wait_for_csv_control(page, timeout=90000):
+    candidates = [
+        page.locator("text=CSV").filter(visible=True),
+        page.locator("button:has-text('CSV')").filter(visible=True),
+        page.locator("a:has-text('CSV')").filter(visible=True),
+        page.locator("[title*='CSV']").filter(visible=True),
+    ]
+    last_error = None
+    for locator in candidates:
+        try:
+            locator.first.wait_for(state="visible", timeout=timeout)
+            return locator.first
+        except Exception as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise RuntimeError("CSV export control did not appear")
+
+
+def _run_report_and_download_csv(page, timeout=90000):
+    page.click("text='Run Report'")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(2500)
+    csv_button = _wait_for_csv_control(page, timeout=timeout)
+    with page.expect_download(timeout=timeout) as download_info:
+        try:
+            csv_button.click()
+        except Exception:
+            csv_button.evaluate("(node) => node.click()")
+    return download_info.value
+
+
 def _configure_checks_report(page, store_number, business_date):
     page.goto(CHECKS_URL, wait_until="networkidle")
     page.wait_for_selector("text='Run Report'", timeout=15000)
@@ -179,14 +211,16 @@ def fetch_tray_report(
             else:
                 _configure_orders_report(page, store_number, business_date)
 
-            with page.expect_download(timeout=60000) as download_info:
-                page.click("text='Run Report'")
-                csv_button = page.locator("text=CSV").filter(visible=True).first
-                csv_button.wait_for(state="visible", timeout=60000)
-                page.wait_for_timeout(1500)
-                csv_button.evaluate("(node) => node.click()")
-
-            download = download_info.value
+            try:
+                download = _run_report_and_download_csv(page, timeout=90000)
+            except Exception:
+                page.wait_for_timeout(3000)
+                page.reload(wait_until="networkidle")
+                if report_type == "checks":
+                    _configure_checks_report(page, store_number, business_date)
+                else:
+                    _configure_orders_report(page, store_number, business_date)
+                download = _run_report_and_download_csv(page, timeout=90000)
             date_part = business_date.strftime("%Y%m%d")
             filename = f"tray_{report_type}_{store_number}_{date_part}.csv"
             save_path = output_dir / filename
