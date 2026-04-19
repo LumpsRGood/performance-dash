@@ -80,6 +80,15 @@ def _clear_and_fill(page, selector, value):
     locator.fill(value)
 
 
+def _goto_report_page(page, url):
+    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    try:
+        page.wait_for_load_state("networkidle", timeout=10000)
+    except Exception:
+        pass
+    page.wait_for_selector("text='Run Report'", timeout=20000)
+
+
 def _select_store(page, store_number):
     page.click("text=Sites :")
     page.click("div:has-text('Sites :') + div, button:has-text('Sites'), .sites-dropdown-selector")
@@ -167,8 +176,7 @@ def _run_report_and_download_csv(page, timeout=90000):
 
 
 def _configure_checks_report(page, store_number, business_date):
-    page.goto(CHECKS_URL, wait_until="networkidle")
-    page.wait_for_selector("text='Run Report'", timeout=15000)
+    _goto_report_page(page, CHECKS_URL)
     date_text = _date_mmddyyyy(business_date)
 
     try:
@@ -192,12 +200,18 @@ def _configure_checks_report(page, store_number, business_date):
 
 
 def _configure_orders_report(page, store_number, business_date):
-    page.goto(ORDERS_URL, wait_until="networkidle")
-    page.wait_for_selector("text='Run Report'", timeout=15000)
+    _goto_report_page(page, ORDERS_URL)
     date_text = _date_mmddyyyy(business_date)
     _clear_and_fill(page, "#datepicker", date_text)
     _select_store(page, store_number)
     _select_visible_text(page, "Service :", "Eat In")
+
+
+def _configure_report(page, report_type, store_number, business_date):
+    if report_type == "checks":
+        _configure_checks_report(page, store_number, business_date)
+    else:
+        _configure_orders_report(page, store_number, business_date)
 
 
 def fetch_tray_report(
@@ -234,21 +248,18 @@ def fetch_tray_report(
             )
             page.wait_for_selector("text=Logout", timeout=20000)
 
-            if report_type == "checks":
-                _configure_checks_report(page, store_number, business_date)
-            else:
-                _configure_orders_report(page, store_number, business_date)
+            _configure_report(page, report_type, store_number, business_date)
 
             download_timeout = 180000 if report_type == "orders" else 120000
             try:
                 download = _run_report_and_download_csv(page, timeout=download_timeout)
             except Exception:
-                page.wait_for_timeout(3000)
-                page.reload(wait_until="networkidle")
-                if report_type == "checks":
-                    _configure_checks_report(page, store_number, business_date)
-                else:
-                    _configure_orders_report(page, store_number, business_date)
+                try:
+                    page.close()
+                except Exception:
+                    pass
+                page = context.new_page()
+                _configure_report(page, report_type, store_number, business_date)
                 download = _run_report_and_download_csv(page, timeout=download_timeout)
             date_part = business_date.strftime("%Y%m%d")
             filename = f"tray_{report_type}_{store_number}_{date_part}.csv"
