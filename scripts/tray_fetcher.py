@@ -135,32 +135,6 @@ def _wait_for_csv_control(page, timeout=90000):
     raise RuntimeError("CSV export control did not appear")
 
 
-def _click_csv_control(page, timeout=15000):
-    last_error = None
-    for _ in range(3):
-        try:
-            csv_button = _wait_for_csv_control(page, timeout=timeout)
-            csv_button.click(timeout=5000, force=True)
-            return
-        except Exception as exc:
-            last_error = exc
-            try:
-                csv_button = _wait_for_csv_control(page, timeout=5000)
-                box = csv_button.bounding_box()
-                if box:
-                    page.mouse.click(
-                        box["x"] + (box["width"] / 2),
-                        box["y"] + (box["height"] / 2),
-                    )
-                    return
-            except Exception as mouse_exc:
-                last_error = mouse_exc
-            page.wait_for_timeout(1000)
-    if last_error:
-        raise last_error
-    raise RuntimeError("Could not click CSV export control")
-
-
 def _wait_for_tray_busy_state_to_clear(page, timeout=180000):
     # Tray sometimes shows "Please wait" or transient loading overlays while
     # the report grid/export controls are being prepared.
@@ -193,7 +167,11 @@ def _run_report_and_download_csv(page, timeout=90000):
     _wait_for_tray_busy_state_to_clear(page, timeout=timeout)
     _wait_for_csv_control(page, timeout=timeout)
     with page.expect_download(timeout=timeout) as download_info:
-        _click_csv_control(page, timeout=min(timeout, 30000))
+        csv_button = _wait_for_csv_control(page, timeout=timeout)
+        try:
+            csv_button.click()
+        except Exception:
+            csv_button.evaluate("(node) => node.click()")
     return download_info.value
 
 
