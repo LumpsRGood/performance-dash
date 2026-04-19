@@ -2,6 +2,7 @@ import ctypes
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -125,12 +126,39 @@ def _wait_for_csv_control(page, timeout=90000):
     raise RuntimeError("CSV export control did not appear")
 
 
+def _wait_for_tray_busy_state_to_clear(page, timeout=180000):
+    # Tray sometimes shows "Please wait" or transient loading overlays while
+    # the report grid/export controls are being prepared.
+    busy_locators = [
+        page.locator("text=/please wait/i"),
+        page.locator("text=/loading/i"),
+        page.locator(".blockUI:visible"),
+        page.locator(".loading:visible"),
+        page.locator(".spinner:visible"),
+    ]
+    deadline = time.time() + (timeout / 1000.0)
+    while time.time() < deadline:
+        any_busy = False
+        for locator in busy_locators:
+            try:
+                if locator.count() > 0 and locator.first.is_visible():
+                    any_busy = True
+                    break
+            except Exception:
+                continue
+        if not any_busy:
+            return
+        page.wait_for_timeout(1000)
+
+
 def _run_report_and_download_csv(page, timeout=90000):
     page.click("text='Run Report'")
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2500)
-    csv_button = _wait_for_csv_control(page, timeout=timeout)
+    _wait_for_tray_busy_state_to_clear(page, timeout=timeout)
+    _wait_for_csv_control(page, timeout=timeout)
     with page.expect_download(timeout=timeout) as download_info:
+        csv_button = _wait_for_csv_control(page, timeout=timeout)
         try:
             csv_button.click()
         except Exception:
@@ -211,8 +239,9 @@ def fetch_tray_report(
             else:
                 _configure_orders_report(page, store_number, business_date)
 
+            download_timeout = 180000 if report_type == "orders" else 120000
             try:
-                download = _run_report_and_download_csv(page, timeout=90000)
+                download = _run_report_and_download_csv(page, timeout=download_timeout)
             except Exception:
                 page.wait_for_timeout(3000)
                 page.reload(wait_until="networkidle")
@@ -220,7 +249,7 @@ def fetch_tray_report(
                     _configure_checks_report(page, store_number, business_date)
                 else:
                     _configure_orders_report(page, store_number, business_date)
-                download = _run_report_and_download_csv(page, timeout=90000)
+                download = _run_report_and_download_csv(page, timeout=download_timeout)
             date_part = business_date.strftime("%Y%m%d")
             filename = f"tray_{report_type}_{store_number}_{date_part}.csv"
             save_path = output_dir / filename
