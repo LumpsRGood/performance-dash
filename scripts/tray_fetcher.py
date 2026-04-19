@@ -250,7 +250,7 @@ def fetch_tray_report(
 
             _configure_report(page, report_type, store_number, business_date)
 
-            download_timeout = 180000 if report_type == "orders" else 120000
+            download_timeout = 300000 if report_type == "orders" else 180000
             try:
                 download = _run_report_and_download_csv(page, timeout=download_timeout)
             except Exception:
