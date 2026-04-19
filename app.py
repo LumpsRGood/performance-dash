@@ -1988,6 +1988,9 @@ if data_source == "FOH Database":
                 index=0,
                 key="foh_period_mode",
             )
+            if st.button("Reload DB Data", key="reload_foh_db_data"):
+                st.cache_data.clear()
+                st.rerun()
             selected_date = st.selectbox(
                 "Business date",
                 available_dates,
