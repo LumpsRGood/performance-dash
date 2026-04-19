@@ -228,7 +228,14 @@ def fetch_tray_report(
             return save_path
         except Exception as exc:
             error_img = output_dir / f"debug_{report_type}_{store_number}.png"
-            page.screenshot(path=str(error_img))
-            raise RuntimeError(f"Tray {report_type} fetch failed for store {store_number}: {exc}") from exc
+            screenshot_note = ""
+            try:
+                page.screenshot(path=str(error_img), timeout=5000)
+                screenshot_note = f" Debug screenshot saved to {error_img}."
+            except Exception as screenshot_exc:
+                screenshot_note = f" Debug screenshot failed: {screenshot_exc}"
+            raise RuntimeError(
+                f"Tray {report_type} fetch failed for store {store_number}: {exc}.{screenshot_note}"
+            ) from exc
         finally:
             browser.close()
