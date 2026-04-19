@@ -1931,6 +1931,21 @@ if data_source == "FOH Database":
             recent_dates = load_available_business_dates()
             default_refresh_date = (pd.Timestamp.now(tz="America/Chicago") - timedelta(days=1)).date()
             refresh_date = st.date_input("Refresh business date", value=default_refresh_date, key="refresh_business_date")
+            refresh_scope = st.radio(
+                "Refresh scope",
+                ["All stores", "Single store"],
+                horizontal=True,
+                key="refresh_scope",
+            )
+            selected_refresh_stores = list(PRIORITY_STORES)
+            if refresh_scope == "Single store":
+                single_store = st.selectbox(
+                    "Store to refresh",
+                    PRIORITY_STORES,
+                    format_func=lambda s: get_store_label(s),
+                    key="single_refresh_store",
+                )
+                selected_refresh_stores = [single_store]
             loaded_date_set = {pd.to_datetime(x).date() for x in recent_dates}
             if refresh_date in loaded_date_set:
                 st.warning(
@@ -1947,17 +1962,28 @@ if data_source == "FOH Database":
             c1, c2, c3 = st.columns(3)
             if c1.button("Run Rosnet Import", use_container_width=True):
                 with st.spinner("Running Rosnet import..."):
-                    st.session_state["last_refresh_result"] = run_refresh_job("rosnet", refresh_date)
+                    st.session_state["last_refresh_result"] = run_refresh_job(
+                        "rosnet",
+                        refresh_date,
+                        stores=selected_refresh_stores,
+                    )
                 st.cache_data.clear()
                 st.rerun()
             if c2.button("Run Tray Import", use_container_width=True, disabled=not tray_ok):
                 with st.spinner("Running Tray import..."):
-                    st.session_state["last_refresh_result"] = run_refresh_job("tray", refresh_date)
+                    st.session_state["last_refresh_result"] = run_refresh_job(
+                        "tray",
+                        refresh_date,
+                        stores=selected_refresh_stores,
+                    )
                 st.cache_data.clear()
                 st.rerun()
             if c3.button("Run Full Refresh", use_container_width=True, disabled=not tray_ok):
                 with st.spinner("Running Rosnet + Tray refresh..."):
-                    st.session_state["last_refresh_result"] = run_full_refresh(refresh_date)
+                    st.session_state["last_refresh_result"] = run_full_refresh(
+                        refresh_date,
+                        stores=selected_refresh_stores,
+                    )
                 st.cache_data.clear()
                 st.rerun()
 
