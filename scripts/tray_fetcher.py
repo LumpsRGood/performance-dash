@@ -160,6 +160,47 @@ def _wait_for_tray_busy_state_to_clear(page, timeout=180000):
         page.wait_for_timeout(1000)
 
 
+def _extract_orders_rows(page, timeout=300000):
+    _wait_for_tray_busy_state_to_clear(page, timeout=timeout)
+    page.wait_for_selector("#ordersReportTable tbody tr", timeout=timeout)
+    rows = page.locator("#ordersReportTable tbody tr").evaluate_all(
+        """(trs) =>
+            trs
+              .map((tr) => Array.from(tr.querySelectorAll("td")).map((td) => td.innerText.replace(/\\s+/g, " ").trim()))
+              .filter((row) => row.length)
+        """
+    )
+    if not rows:
+        raise RuntimeError("Orders report table loaded without any rows")
+    return rows
+
+
+def _write_orders_csv_from_table(page, save_path, timeout=300000):
+    import csv
+
+    rows = _extract_orders_rows(page, timeout=timeout)
+    headers = [
+        "Time",
+        "ID Site",
+        "Service Destination",
+        "Routing",
+        "Device Orders Report",
+        "Items",
+        "Staff Customer",
+        "Check ID Check Number",
+        "Base (Including Disc.)",
+        "Tax",
+        "Fees",
+        "Total (Excluding Tip)",
+        "Print Status",
+        "Action",
+    ]
+    with save_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        writer.writerows(rows)
+
+
 def _run_report_and_download_csv(page, timeout=90000):
     page.click("text='Run Report'")
     page.wait_for_load_state("networkidle")
@@ -251,20 +292,26 @@ def fetch_tray_report(
             _configure_report(page, report_type, store_number, business_date)
 
             download_timeout = 300000 if report_type == "orders" else 180000
-            try:
-                download = _run_report_and_download_csv(page, timeout=download_timeout)
-            except Exception:
-                try:
-                    page.close()
-                except Exception:
-                    pass
-                page = context.new_page()
-                _configure_report(page, report_type, store_number, business_date)
-                download = _run_report_and_download_csv(page, timeout=download_timeout)
             date_part = business_date.strftime("%Y%m%d")
             filename = f"tray_{report_type}_{store_number}_{date_part}.csv"
             save_path = output_dir / filename
-            download.save_as(str(save_path))
+            if report_type == "orders":
+                page.click("text='Run Report'")
+                page.wait_for_load_state("networkidle")
+                page.wait_for_timeout(2500)
+                _write_orders_csv_from_table(page, save_path, timeout=download_timeout)
+            else:
+                try:
+                    download = _run_report_and_download_csv(page, timeout=download_timeout)
+                except Exception:
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
+                    page = context.new_page()
+                    _configure_report(page, report_type, store_number, business_date)
+                    download = _run_report_and_download_csv(page, timeout=download_timeout)
+                download.save_as(str(save_path))
             return save_path
         except Exception as exc:
             error_img = output_dir / f"debug_{report_type}_{store_number}.png"
