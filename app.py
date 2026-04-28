@@ -1331,6 +1331,7 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
     all_green_count = len(all_green)
 
     export_df = card_df.copy()
+    has_visible_server_rows = not export_df.empty
 
     trend_lookup = {}
     if trend_df is not None and not trend_df.empty:
@@ -1399,6 +1400,16 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
             badge_by_row[slowest_idx] = ("SLOWEST TURN", "#ef4444", "white")
 
     export_df = export_df[["Server", "Tablet %", "Turn Time", "Dine In Bev %", "PPA"]].copy()
+    if export_df.empty:
+        export_df = pd.DataFrame(
+            [{
+                "Server": "No dine-in server rows",
+                "Tablet %": "",
+                "Turn Time": "",
+                "Dine In Bev %": "",
+                "PPA": "",
+            }]
+        )
 
     row_count = len(export_df)
     legend_items = [
@@ -1557,129 +1568,142 @@ def create_whatsapp_store_card(store_label, store_df, subtitle=None, trend_df=No
         header_cell.set_facecolor("#2d6cb5")
         header_cell.set_edgecolor("#d7dee8")
 
-    for row_idx in range(1, len(export_df) + 1):
-        original_row = card_df.iloc[row_idx - 1]
+    if has_visible_server_rows:
+        for row_idx in range(1, len(export_df) + 1):
+            original_row = card_df.iloc[row_idx - 1]
 
-        for col_idx in range(ncols):
-            cell = table[row_idx, col_idx]
-            cell.set_edgecolor("#dfe5ec")
-            if row_idx % 2 == 0:
-                cell.set_facecolor("#fbfcfe")
-            else:
+            for col_idx in range(ncols):
+                cell = table[row_idx, col_idx]
+                cell.set_edgecolor("#dfe5ec")
+                if row_idx % 2 == 0:
+                    cell.set_facecolor("#fbfcfe")
+                else:
+                    cell.set_facecolor("white")
+
+            server_cell = table[row_idx, 0]
+            server_cell.get_text().set_fontsize(9.3)
+            server_cell.get_text().set_ha("left")
+            server_cell.get_text().set_x(0.03)
+
+            tablet_cell = table[row_idx, 1]
+            tablet_val = original_row["Tablet %"]
+            if pd.notna(tablet_val):
+                if tablet_val >= 0.90:
+                    tablet_cell.set_facecolor("#6fdc8c")
+                    tablet_cell.set_text_props(weight="bold", color="black")
+                elif tablet_val >= 0.80:
+                    tablet_cell.set_facecolor("#ffe066")
+                    tablet_cell.set_text_props(weight="bold", color="black")
+                else:
+                    tablet_cell.set_facecolor("#ff6b6b")
+                    tablet_cell.set_text_props(weight="bold", color="white")
+
+            turn_cell = table[row_idx, 2]
+            turn_val = original_row["Turn Time"]
+            if pd.notna(turn_val):
+                if turn_val <= 40:
+                    turn_cell.set_facecolor("#6fdc8c")
+                    turn_cell.set_text_props(weight="bold", color="black")
+                elif turn_val <= 45:
+                    turn_cell.set_facecolor("#ffe066")
+                    turn_cell.set_text_props(weight="bold", color="black")
+                else:
+                    turn_cell.set_facecolor("#ff6b6b")
+                    turn_cell.set_text_props(weight="bold", color="white")
+
+            bev_cell = table[row_idx, 3]
+            bev_val = original_row["Dine In Bev %"]
+            if pd.notna(bev_val):
+                if bev_val >= 0.19:
+                    bev_cell.set_facecolor("#6fdc8c")
+                    bev_cell.set_text_props(weight="bold", color="black")
+                elif bev_val >= 0.18:
+                    bev_cell.set_facecolor("#ffe066")
+                    bev_cell.set_text_props(weight="bold", color="black")
+                else:
+                    bev_cell.set_facecolor("#ff6b6b")
+                    bev_cell.set_text_props(weight="bold", color="white")
+
+            ppa_cell = table[row_idx, 4]
+            ppa_val = original_row["PPA"]
+            if pd.notna(ppa_val):
+                if ppa_val >= 21:
+                    ppa_cell.set_facecolor("#6fdc8c")
+                    ppa_cell.set_text_props(weight="bold", color="black")
+                elif ppa_val >= 20:
+                    ppa_cell.set_facecolor("#ffe066")
+                    ppa_cell.set_text_props(weight="bold", color="black")
+                else:
+                    ppa_cell.set_facecolor("#ff6b6b")
+                    ppa_cell.set_text_props(weight="bold", color="white")
+    else:
+        for row_idx in range(1, len(export_df) + 1):
+            for col_idx in range(ncols):
+                cell = table[row_idx, col_idx]
+                cell.set_edgecolor("#dfe5ec")
                 cell.set_facecolor("white")
-
-        server_cell = table[row_idx, 0]
-        server_cell.get_text().set_fontsize(9.3)
-        server_cell.get_text().set_ha("left")
-        server_cell.get_text().set_x(0.03)
-
-        tablet_cell = table[row_idx, 1]
-        tablet_val = original_row["Tablet %"]
-        if pd.notna(tablet_val):
-            if tablet_val >= 0.90:
-                tablet_cell.set_facecolor("#6fdc8c")
-                tablet_cell.set_text_props(weight="bold", color="black")
-            elif tablet_val >= 0.80:
-                tablet_cell.set_facecolor("#ffe066")
-                tablet_cell.set_text_props(weight="bold", color="black")
-            else:
-                tablet_cell.set_facecolor("#ff6b6b")
-                tablet_cell.set_text_props(weight="bold", color="white")
-
-        turn_cell = table[row_idx, 2]
-        turn_val = original_row["Turn Time"]
-        if pd.notna(turn_val):
-            if turn_val <= 40:
-                turn_cell.set_facecolor("#6fdc8c")
-                turn_cell.set_text_props(weight="bold", color="black")
-            elif turn_val <= 45:
-                turn_cell.set_facecolor("#ffe066")
-                turn_cell.set_text_props(weight="bold", color="black")
-            else:
-                turn_cell.set_facecolor("#ff6b6b")
-                turn_cell.set_text_props(weight="bold", color="white")
-
-        bev_cell = table[row_idx, 3]
-        bev_val = original_row["Dine In Bev %"]
-        if pd.notna(bev_val):
-            if bev_val >= 0.19:
-                bev_cell.set_facecolor("#6fdc8c")
-                bev_cell.set_text_props(weight="bold", color="black")
-            elif bev_val >= 0.18:
-                bev_cell.set_facecolor("#ffe066")
-                bev_cell.set_text_props(weight="bold", color="black")
-            else:
-                bev_cell.set_facecolor("#ff6b6b")
-                bev_cell.set_text_props(weight="bold", color="white")
-
-        ppa_cell = table[row_idx, 4]
-        ppa_val = original_row["PPA"]
-        if pd.notna(ppa_val):
-            if ppa_val >= 21:
-                ppa_cell.set_facecolor("#6fdc8c")
-                ppa_cell.set_text_props(weight="bold", color="black")
-            elif ppa_val >= 20:
-                ppa_cell.set_facecolor("#ffe066")
-                ppa_cell.set_text_props(weight="bold", color="black")
-            else:
-                ppa_cell.set_facecolor("#ff6b6b")
-                ppa_cell.set_text_props(weight="bold", color="white")
+            server_cell = table[row_idx, 0]
+            server_cell.get_text().set_fontsize(9.8)
+            server_cell.get_text().set_color("#6b7280")
+            server_cell.get_text().set_ha("center")
+            server_cell.get_text().set_x(0.5)
 
     fig.canvas.draw()
     badge_icons = load_badge_icons()
-    for row_idx in range(1, len(export_df) + 1):
-        server_cell = table[row_idx, 0]
-        original_row = card_df.iloc[row_idx - 1]
-        badge = badge_by_row.get(original_row.name)
-        if not badge:
-            continue
-
-        label = badge[0]
-        icon = badge_icons.get(label)
-        if icon is None:
-            continue
-
-        x = server_cell.get_x()
-        y = server_cell.get_y()
-        w = server_cell.get_width()
-        h = server_cell.get_height()
-        icon_ax = ax.inset_axes(
-            [x + w * 0.865, y + h * 0.18, w * 0.09, h * 0.64],
-            transform=ax.transAxes,
-            zorder=4,
-        )
-        icon_ax.imshow(icon)
-        icon_ax.set_axis_off()
-
-    for row_idx in range(1, len(export_df) + 1):
-        original_row = card_df.iloc[row_idx - 1]
-        for col_idx, metric_name, weight_name in [
-            (1, "Tablet %", "Tablet Weight"),
-            (2, "Turn Time", "Turn Check Count"),
-            (3, "Dine In Bev %", "Bev Weight"),
-            (4, "PPA", "PPA Weight"),
-        ]:
-            metric_cell = table[row_idx, col_idx]
-            current_value = original_row.get(metric_name, pd.NA)
-            previous_value = trend_lookup.get(original_row["Server"], {}).get(metric_name, pd.NA)
-            previous_weight = trend_lookup.get(original_row["Server"], {}).get(weight_name, pd.NA)
-            marker, marker_color = metric_row_trend_marker(
-                current_value, previous_value, previous_weight, metric_name
-            )
-            if not marker:
+    if has_visible_server_rows:
+        for row_idx in range(1, len(export_df) + 1):
+            server_cell = table[row_idx, 0]
+            original_row = card_df.iloc[row_idx - 1]
+            badge = badge_by_row.get(original_row.name)
+            if not badge:
                 continue
-            ax.text(
-                metric_cell.get_x() + metric_cell.get_width() * 0.92,
-                metric_cell.get_y() + metric_cell.get_height() * 0.50,
-                marker,
+
+            label = badge[0]
+            icon = badge_icons.get(label)
+            if icon is None:
+                continue
+
+            x = server_cell.get_x()
+            y = server_cell.get_y()
+            w = server_cell.get_width()
+            h = server_cell.get_height()
+            icon_ax = ax.inset_axes(
+                [x + w * 0.865, y + h * 0.18, w * 0.09, h * 0.64],
                 transform=ax.transAxes,
-                fontsize=11,
-                fontweight="bold",
-                color=marker_color,
-                ha="center",
-                va="center",
-                zorder=5,
+                zorder=4,
             )
+            icon_ax.imshow(icon)
+            icon_ax.set_axis_off()
+
+        for row_idx in range(1, len(export_df) + 1):
+            original_row = card_df.iloc[row_idx - 1]
+            for col_idx, metric_name, weight_name in [
+                (1, "Tablet %", "Tablet Weight"),
+                (2, "Turn Time", "Turn Check Count"),
+                (3, "Dine In Bev %", "Bev Weight"),
+                (4, "PPA", "PPA Weight"),
+            ]:
+                metric_cell = table[row_idx, col_idx]
+                current_value = original_row.get(metric_name, pd.NA)
+                previous_value = trend_lookup.get(original_row["Server"], {}).get(metric_name, pd.NA)
+                previous_weight = trend_lookup.get(original_row["Server"], {}).get(weight_name, pd.NA)
+                marker, marker_color = metric_row_trend_marker(
+                    current_value, previous_value, previous_weight, metric_name
+                )
+                if not marker:
+                    continue
+                ax.text(
+                    metric_cell.get_x() + metric_cell.get_width() * 0.92,
+                    metric_cell.get_y() + metric_cell.get_height() * 0.50,
+                    marker,
+                    transform=ax.transAxes,
+                    fontsize=11,
+                    fontweight="bold",
+                    color=marker_color,
+                    ha="center",
+                    va="center",
+                    zorder=5,
+                )
 
     legend_rows = [
         (
