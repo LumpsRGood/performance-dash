@@ -694,6 +694,18 @@ def get_week_windows(selected_date):
     return wtd_start, selected, prev_week_start, prev_week_end
 
 
+def get_month_windows(selected_date):
+    selected = pd.to_datetime(selected_date).date()
+    mtd_start = selected.replace(day=1)
+
+    prev_month_end = mtd_start - timedelta(days=1)
+    prev_month_start = prev_month_end.replace(day=1)
+    prev_month_cutoff_day = min(selected.day, prev_month_end.day)
+    prev_month_cutoff = prev_month_start.replace(day=prev_month_cutoff_day)
+
+    return mtd_start, selected, prev_month_start, prev_month_cutoff
+
+
 TREND_GUARDS = {
     "Tablet %": {"weight_col": "Tablet Weight", "row_min_weight": 100.0, "store_min_weight": 400.0, "flat_threshold": 0.01},
     "Turn Time": {"weight_col": "Turn Check Count", "row_min_weight": 3, "store_min_weight": 12, "flat_threshold": 1.0},
@@ -2033,7 +2045,7 @@ if data_source == "FOH Database":
         else:
             period_mode = st.radio(
                 "Period",
-                ["Yesterday", "WTD"],
+                ["Yesterday", "WTD", "MTD"],
                 horizontal=True,
                 index=0,
                 key="foh_period_mode",
@@ -2070,6 +2082,30 @@ if data_source == "FOH Database":
                         f"All arrows vs LW "
                         f"({pd.to_datetime(prev_week_start).strftime('%b %-d')} - "
                         f"{pd.to_datetime(prev_week_end).strftime('%b %-d, %Y')})"
+                    ),
+                )
+            elif period_mode == "MTD":
+                mtd_start, mtd_end, prev_month_start, prev_month_cutoff = get_month_windows(selected_date)
+                combined = aggregate_period_metrics(load_foh_metrics_between(mtd_start, mtd_end))
+                prev_month_combined = aggregate_period_metrics(
+                    load_foh_metrics_between(prev_month_start, prev_month_cutoff)
+                )
+                card_trend_by_store = {
+                    store: df.copy()
+                    for store, df in prev_month_combined.groupby("Store", dropna=False)
+                }
+                st.caption(
+                    f"Showing FOH database MTD data for the Alabama priority stores from "
+                    f"{pd.to_datetime(mtd_start).strftime('%B %-d, %Y')} through {selected_dt.strftime('%B %-d, %Y')}."
+                )
+                render_combined_dashboard(
+                    combined.copy(),
+                    card_subtitle=f"Month to Date through {selected_dt.strftime('%b %-d, %Y')}",
+                    card_trend_by_store=card_trend_by_store,
+                    card_trend_note=(
+                        f"All arrows vs LM "
+                        f"({pd.to_datetime(prev_month_start).strftime('%b %-d')} - "
+                        f"{pd.to_datetime(prev_month_cutoff).strftime('%b %-d, %Y')})"
                     ),
                 )
             else:
