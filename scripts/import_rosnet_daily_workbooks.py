@@ -101,8 +101,14 @@ def workbook_date(path: Path):
     return pd.to_datetime(match.group(1)).date()
 
 
-def read_excel_with_header_search(path: Path, required_terms, default_header=4, max_header_row=10):
-    raw = pd.read_excel(path, header=None)
+def read_excel_with_header_search(
+    path: Path,
+    required_terms,
+    default_header=4,
+    max_header_row=10,
+    sheet_name=0,
+):
+    raw = pd.read_excel(path, sheet_name=sheet_name, header=None)
     for header_idx in range(min(max_header_row, len(raw))):
         row_values = [str(v).strip().lower() for v in raw.iloc[header_idx].tolist()]
         if all(any(term in cell for cell in row_values) for term in required_terms):
@@ -110,7 +116,7 @@ def read_excel_with_header_search(path: Path, required_terms, default_header=4, 
             data = raw.iloc[header_idx + 1 :].copy()
             data.columns = columns
             return data.dropna(how="all")
-    return pd.read_excel(path, header=default_header)
+    return pd.read_excel(path, sheet_name=sheet_name, header=default_header)
 
 
 def parse_ppa(path: Path):
@@ -159,10 +165,13 @@ def parse_ppa(path: Path):
 
 def parse_bev(path: Path):
     business_date = workbook_date(path)
+    workbook = pd.ExcelFile(path)
+    sheet_name = "Employee Summary" if "Employee Summary" in workbook.sheet_names else workbook.sheet_names[0]
     df = read_excel_with_header_search(
         path,
         required_terms=["location", "employee", "% of net sales"],
         default_header=4,
+        sheet_name=sheet_name,
     )
     df.columns = [str(c).strip() for c in df.columns]
     col_store = pick_col(df, ["location"])
