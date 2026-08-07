@@ -2004,7 +2004,7 @@ def insert_manual_import_run(cur, business_date, report_type, file):
             business_date, source_system, report_type, source_filename, source_file_hash,
             status, metadata, started_at, completed_at
         )
-        values (%s, 'rosnet_manual', %s, %s, %s, 'processed', %s::jsonb, now(), now())
+        values (%s, 'rosnet', %s, %s, %s, 'processed', %s::jsonb, now(), now())
         returning id
         """,
         (business_date, report_type, file.name, digest, json.dumps({"source": "dashboard_manual_upload"})),
