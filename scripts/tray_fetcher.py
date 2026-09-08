@@ -1,5 +1,5 @@
-import ctypes
 import os
+import re
 import subprocess
 import sys
 import time
@@ -38,28 +38,6 @@ def ensure_playwright_chromium():
         raise RuntimeError(f"Unable to install Playwright Chromium automatically. {detail}")
 
 
-def ensure_linux_browser_libs():
-    configure_vendored_browser_libs()
-    required_libs = [
-        "libglib-2.0.so.0",
-        "libgobject-2.0.so.0",
-        "libnss3.so",
-        "libnspr4.so",
-    ]
-    missing = []
-    for lib_name in required_libs:
-        try:
-            ctypes.CDLL(lib_name)
-        except OSError:
-            missing.append(lib_name)
-    if missing:
-        raise RuntimeError(
-            "Tray automation is not supported on this host because required browser libraries are missing: "
-            + ", ".join(missing)
-            + ". Rosnet refresh can run in-app, but Tray refresh needs a different host (or local run) with Chromium dependencies installed."
-        )
-
-
 def configure_vendored_browser_libs():
     if not VENDORED_BROWSER_LIB_DIR.exists():
         return None
@@ -69,6 +47,17 @@ def configure_vendored_browser_libs():
     if vendor_path not in paths:
         os.environ["LD_LIBRARY_PATH"] = ":".join([vendor_path] + paths)
     return os.environ.get("LD_LIBRARY_PATH")
+
+
+def raise_browser_launch_error(exc):
+    message = str(exc)
+    match = re.search(r"error while loading shared libraries: ([^:]+)", message)
+    if match:
+        raise RuntimeError(
+            f"Tray's headless browser is missing the runtime library {match.group(1)}. "
+            "The deployment's vendored Chromium libraries need to be refreshed."
+        ) from exc
+    raise exc
 
 
 def launch_browser_with_install(playwright, headless):
@@ -81,11 +70,7 @@ def launch_browser_with_install(playwright, headless):
     except PlaywrightError as exc:
         message = str(exc)
         if "Executable doesn't exist" not in message:
-            try:
-                ensure_linux_browser_libs()
-            except RuntimeError as libs_exc:
-                raise RuntimeError(f"{libs_exc} Original browser launch error: {message}") from exc
-            raise
+            raise_browser_launch_error(exc)
         ensure_playwright_chromium()
         try:
             return playwright.chromium.launch(
@@ -93,11 +78,7 @@ def launch_browser_with_install(playwright, headless):
                 env={**os.environ, "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", "")},
             )
         except PlaywrightError as install_exc:
-            try:
-                ensure_linux_browser_libs()
-            except RuntimeError as libs_exc:
-                raise RuntimeError(f"{libs_exc} Original browser launch error: {install_exc}") from install_exc
-            raise
+            raise_browser_launch_error(install_exc)
 
 
 def _date_mmddyyyy(business_date):
