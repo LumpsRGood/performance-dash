@@ -211,6 +211,21 @@ def run_full_refresh(business_date, stores=PRIORITY_STORES):
     first = run_refresh_job("rosnet", business_date, stores=stores)
     if not first["ok"]:
         return first
+    tray_ok, tray_missing_libs = tray_runtime_supported()
+    if not tray_ok:
+        warning = (
+            "Rosnet import completed. Tray import was skipped because this Streamlit host is missing "
+            "required browser libraries: "
+            + ", ".join(tray_missing_libs)
+            + "."
+        )
+        merged_stdout = "\n\n".join(part for part in [first.get("stdout", ""), warning] if part)
+        return {
+            "ok": True,
+            "label": "Rosnet refresh",
+            "stdout": merged_stdout,
+            "stderr": "",
+        }
     second = run_refresh_job("tray", business_date, stores=stores)
     merged_stdout = "\n\n".join(part for part in [first.get("stdout", ""), second.get("stdout", "")] if part)
     merged_stderr = "\n\n".join(part for part in [first.get("stderr", ""), second.get("stderr", "")] if part)
@@ -2145,8 +2160,10 @@ if data_source == "FOH Database":
                     )
                 st.cache_data.clear()
                 st.rerun()
-            if c3.button("Run Full Refresh", use_container_width=True, disabled=not tray_ok):
-                with st.spinner("Running Rosnet + Tray refresh..."):
+            full_refresh_label = "Run Full Refresh" if tray_ok else "Run Rosnet Refresh"
+            if c3.button(full_refresh_label, use_container_width=True):
+                spinner_text = "Running Rosnet + Tray refresh..." if tray_ok else "Running Rosnet refresh..."
+                with st.spinner(spinner_text):
                     st.session_state["last_refresh_result"] = run_full_refresh(
                         refresh_date,
                         stores=selected_refresh_stores,
