@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 DEFAULT_ENV_FILE = ROOT / ".env"
 VENDORED_BROWSER_LIB_DIR = PROJECT_ROOT / "vendor" / "browser-libs"
+BROWSER_LAUNCH_ARGS = ["--disable-gpu"]
 ORDERS_URL = "https://hq.dine.tray.com/tray/admin/reports?page=ordersListNew"
 CHECKS_URL = "https://hq.dine.tray.com/tray/admin/reports?page=closeTabs"
 
@@ -65,6 +66,7 @@ def launch_browser_with_install(playwright, headless):
     try:
         return playwright.chromium.launch(
             headless=headless,
+            args=BROWSER_LAUNCH_ARGS,
             env={**os.environ, "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", "")},
         )
     except PlaywrightError as exc:
@@ -75,6 +77,7 @@ def launch_browser_with_install(playwright, headless):
         try:
             return playwright.chromium.launch(
                 headless=headless,
+                args=BROWSER_LAUNCH_ARGS,
                 env={**os.environ, "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", "")},
             )
         except PlaywrightError as install_exc:
@@ -294,7 +297,7 @@ def fetch_tray_report(
         page = context.new_page()
 
         try:
-            page.goto("https://hq.dine.tray.com", wait_until="networkidle")
+            page.goto("https://hq.dine.tray.com", wait_until="domcontentloaded", timeout=60000)
             page.fill("input[type='email'], input[placeholder*='Email'], input#username", username)
             page.fill("input[type='password'], input[placeholder*='Password']", password)
             page.click(
