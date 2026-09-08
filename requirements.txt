@@ -6,4 +6,3 @@ matplotlib
 psycopg2-binary
 python-dotenv
 requests
-playwright==1.58.0

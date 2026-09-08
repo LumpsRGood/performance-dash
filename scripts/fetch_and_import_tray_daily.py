@@ -113,38 +113,17 @@ def main():
     output_dir = Path(args.output_dir or f"/tmp/performance-dash/downloads/tray/{business_date}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    order_files = []
-    check_files = []
-    for store in stores:
-        print(f"Fetching Tray reports for {store}...")
-        order_files.append(
-            str(
-                tray_api.fetch_tray_report(
-                    store_number=store,
-                    business_date=pd.to_datetime(business_date).date(),
-                    report_type="orders",
-                    username=args.tray_username,
-                    password=args.tray_password,
-                    debug_visible=args.debug_visible,
-                    output_dir=output_dir,
-                    env_file=args.tray_env_file,
-                )
-            )
-        )
-        check_files.append(
-            str(
-                tray_api.fetch_tray_report(
-                    store_number=store,
-                    business_date=pd.to_datetime(business_date).date(),
-                    report_type="checks",
-                    username=args.tray_username,
-                    password=args.tray_password,
-                    debug_visible=args.debug_visible,
-                    output_dir=output_dir,
-                    env_file=args.tray_env_file,
-                )
-            )
-        )
+    print(f"Fetching Tray reports for {', '.join(stores)}...")
+    reports = tray_api.fetch_tray_reports(
+        stores=stores,
+        business_date=pd.to_datetime(business_date).date(),
+        username=args.tray_username,
+        password=args.tray_password,
+        output_dir=output_dir,
+        env_file=args.tray_env_file,
+    )
+    order_files = [str(path) for path in reports["orders"]]
+    check_files = [str(path) for path in reports["checks"]]
 
     sys.argv = [
         "import_tray_daily_files.py",

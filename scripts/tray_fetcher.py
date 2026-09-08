@@ -1,30 +1,18 @@
+import base64
 import os
-import re
-import subprocess
-import sys
-import time
 from pathlib import Path
 
+import requests
 from dotenv import dotenv_values
-from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parent
-PROJECT_ROOT = ROOT.parent
 DEFAULT_ENV_FILE = ROOT / ".env"
-VENDORED_BROWSER_LIB_DIR = PROJECT_ROOT / "vendor" / "browser-libs"
-BROWSER_LAUNCH_ARGS = [
-    "--disable-gpu",
-    "--no-zygote",
-    "--single-process",
-    "--renderer-process-limit=1",
-]
-ORDERS_URL = "https://hq.dine.tray.com/tray/admin/reports?page=ordersListNew"
-CHECKS_URL = "https://hq.dine.tray.com/tray/admin/reports?page=closeTabs"
+DEFAULT_COLLECTOR_URL = "https://app-attack-live-collector.onrender.com"
 
 
 def load_tray_credentials(env_file=DEFAULT_ENV_FILE):
-    cfg = dotenv_values(env_file)
+    cfg = dotenv_values(env_file) if env_file else {}
     username = os.getenv("TRAY_USERNAME") or cfg.get("TRAY_USERNAME")
     password = os.getenv("TRAY_PASSWORD") or cfg.get("TRAY_PASSWORD")
     if not username or not password:
@@ -32,264 +20,65 @@ def load_tray_credentials(env_file=DEFAULT_ENV_FILE):
     return username, password
 
 
-def ensure_playwright_chromium():
-    result = subprocess.run(
-        [sys.executable, "-m", "playwright", "install", "chromium"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()
-        raise RuntimeError(f"Unable to install Playwright Chromium automatically. {detail}")
+def fetch_tray_reports(
+    stores,
+    business_date,
+    username=None,
+    password=None,
+    output_dir=None,
+    env_file=DEFAULT_ENV_FILE,
+):
+    if username is None or password is None:
+        username, password = load_tray_credentials(env_file)
 
+    output_dir = Path(output_dir or os.getcwd())
+    output_dir.mkdir(parents=True, exist_ok=True)
+    collector_url = os.getenv("TRAY_COLLECTOR_URL", DEFAULT_COLLECTOR_URL).rstrip("/")
 
-def configure_vendored_browser_libs():
-    if not VENDORED_BROWSER_LIB_DIR.exists():
-        return None
-    vendor_path = str(VENDORED_BROWSER_LIB_DIR)
-    current_path = os.environ.get("LD_LIBRARY_PATH", "")
-    paths = [path for path in current_path.split(":") if path]
-    if vendor_path not in paths:
-        os.environ["LD_LIBRARY_PATH"] = ":".join([vendor_path] + paths)
-    return os.environ.get("LD_LIBRARY_PATH")
+    try:
+        response = requests.post(
+            f"{collector_url}/fetch-daily-reports",
+            json={
+                "email": username,
+                "password": password,
+                "stores": [str(store) for store in stores],
+                "businessDate": business_date.isoformat(),
+            },
+            timeout=600,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Could not reach the Tray report service: {exc}") from exc
 
-
-def raise_browser_launch_error(exc):
-    message = str(exc)
-    match = re.search(r"error while loading shared libraries: ([^:]+)", message)
-    if match:
+    if not response.ok:
+        try:
+            detail = response.json().get("detail", response.text)
+        except ValueError:
+            detail = response.text
         raise RuntimeError(
-            f"Tray's headless browser is missing the runtime library {match.group(1)}. "
-            "The deployment's vendored Chromium libraries need to be refreshed."
-        ) from exc
-    raise exc
-
-
-def browser_runtime_diagnostics():
-    diagnostics = []
-    for label, path in (
-        ("memory.current", Path("/sys/fs/cgroup/memory.current")),
-        ("memory.max", Path("/sys/fs/cgroup/memory.max")),
-        ("memory.events", Path("/sys/fs/cgroup/memory.events")),
-        ("memory.usage", Path("/sys/fs/cgroup/memory/memory.usage_in_bytes")),
-        ("memory.limit", Path("/sys/fs/cgroup/memory/memory.limit_in_bytes")),
-        ("memory.oom", Path("/sys/fs/cgroup/memory/memory.oom_control")),
-    ):
-        try:
-            diagnostics.append(f"{label}={path.read_text().strip()}")
-        except OSError:
-            continue
-    return "; ".join(diagnostics)
-
-
-def launch_browser_with_install(playwright, headless):
-    configure_vendored_browser_libs()
-    try:
-        return playwright.chromium.launch(
-            headless=headless,
-            args=BROWSER_LAUNCH_ARGS,
-            env={**os.environ, "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", "")},
+            f"Tray report service failed ({response.status_code}): {detail}"
         )
-    except PlaywrightError as exc:
-        message = str(exc)
-        if "Executable doesn't exist" not in message:
-            raise_browser_launch_error(exc)
-        ensure_playwright_chromium()
+
+    payload = response.json()
+    saved = {"orders": [], "checks": []}
+    for item in payload.get("files", []):
+        report_type = item.get("reportType")
+        if report_type not in saved:
+            raise RuntimeError(f"Tray report service returned an invalid report type: {report_type}")
+        filename = Path(item["filename"]).name
+        path = output_dir / filename
         try:
-            return playwright.chromium.launch(
-                headless=headless,
-                args=BROWSER_LAUNCH_ARGS,
-                env={**os.environ, "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", "")},
-            )
-        except PlaywrightError as install_exc:
-            raise_browser_launch_error(install_exc)
+            path.write_bytes(base64.b64decode(item["contentBase64"], validate=True))
+        except (KeyError, ValueError) as exc:
+            raise RuntimeError(f"Tray report service returned invalid data for {filename}") from exc
+        saved[report_type].append(path)
 
-
-def _date_mmddyyyy(business_date):
-    return business_date.strftime("%m/%d/%Y")
-
-
-def _clear_and_fill(page, selector, value):
-    locator = page.locator(selector).first
-    locator.click()
-    locator.fill("")
-    locator.fill(value)
-
-
-def _goto_report_page(page, url):
-    page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except Exception:
-        pass
-    page.wait_for_selector("text='Run Report'", timeout=20000)
-
-
-def _select_store(page, store_number):
-    page.click("text=Sites :")
-    page.click("div:has-text('Sites :') + div, button:has-text('Sites'), .sites-dropdown-selector")
-    page.wait_for_timeout(1000)
-
-    try:
-        page.click(f"text=IHOP #{store_number}", timeout=2000)
-    except Exception:
-        search_boxes = page.locator(
-            "input[type='text']:visible:not([id*='Date']):not([name*='date']):not([id*='ate']):not([id*='Check'])"
+    expected = len(stores)
+    if len(saved["orders"]) != expected or len(saved["checks"]) != expected:
+        raise RuntimeError(
+            "Tray report service returned an incomplete set of reports "
+            f"({len(saved['orders'])} orders, {len(saved['checks'])} checks; expected {expected} each)."
         )
-        if search_boxes.count() > 0:
-            search_boxes.first.fill(str(store_number))
-        page.wait_for_timeout(1500)
-        page.click(f"text=IHOP #{store_number}")
-
-    page.keyboard.press("Escape")
-
-
-def _select_visible_text(page, label_text, option_text):
-    page.click(f"text={label_text}")
-    page.click(f"div:has-text('{label_text}') + div, span:has-text('{label_text}') + div")
-    page.wait_for_timeout(800)
-    page.locator(f"text='{option_text}'").filter(visible=True).first.click()
-    page.keyboard.press("Escape")
-
-
-def _wait_for_csv_control(page, timeout=90000):
-    candidates = [
-        page.locator("text=CSV").filter(visible=True),
-        page.locator("button:has-text('CSV')").filter(visible=True),
-        page.locator("a:has-text('CSV')").filter(visible=True),
-        page.locator("[title*='CSV']").filter(visible=True),
-    ]
-    last_error = None
-    for locator in candidates:
-        try:
-            locator.first.wait_for(state="visible", timeout=timeout)
-            return locator.first
-        except Exception as exc:
-            last_error = exc
-    if last_error:
-        raise last_error
-    raise RuntimeError("CSV export control did not appear")
-
-
-def _wait_for_tray_busy_state_to_clear(page, timeout=180000):
-    # Tray sometimes shows "Please wait" or transient loading overlays while
-    # the report grid/export controls are being prepared.
-    busy_locators = [
-        page.locator("text=/please wait/i"),
-        page.locator("text=/loading/i"),
-        page.locator(".blockUI:visible"),
-        page.locator(".loading:visible"),
-        page.locator(".spinner:visible"),
-    ]
-    deadline = time.time() + (timeout / 1000.0)
-    while time.time() < deadline:
-        any_busy = False
-        for locator in busy_locators:
-            try:
-                if locator.count() > 0 and locator.first.is_visible():
-                    any_busy = True
-                    break
-            except Exception:
-                continue
-        if not any_busy:
-            return
-        page.wait_for_timeout(1000)
-
-
-def _extract_orders_rows(page, timeout=300000):
-    _wait_for_tray_busy_state_to_clear(page, timeout=timeout)
-    page.wait_for_selector("#ordersReportTable tbody tr", timeout=timeout)
-    rows = page.locator("#ordersReportTable tbody tr").evaluate_all(
-        """(trs) =>
-            trs
-              .map((tr) => Array.from(tr.querySelectorAll("td")).map((td) => td.innerText.replace(/\\s+/g, " ").trim()))
-              .filter((row) => row.length)
-        """
-    )
-    if not rows:
-        raise RuntimeError("Orders report table loaded without any rows")
-    return rows
-
-
-def _write_orders_csv_from_table(page, save_path, timeout=300000):
-    import csv
-
-    rows = _extract_orders_rows(page, timeout=timeout)
-    headers = [
-        "Time",
-        "ID Site",
-        "Service Destination",
-        "Routing",
-        "Device Orders Report",
-        "Items",
-        "Staff Customer",
-        "Check ID Check Number",
-        "Base (Including Disc.)",
-        "Tax",
-        "Fees",
-        "Total (Excluding Tip)",
-        "Print Status",
-        "Action",
-    ]
-    with save_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(headers)
-        writer.writerows(rows)
-
-
-def _run_report_and_download_csv(page, timeout=90000):
-    page.click("text='Run Report'")
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(2500)
-    _wait_for_tray_busy_state_to_clear(page, timeout=timeout)
-    _wait_for_csv_control(page, timeout=timeout)
-    with page.expect_download(timeout=timeout) as download_info:
-        csv_button = _wait_for_csv_control(page, timeout=timeout)
-        try:
-            csv_button.click()
-        except Exception:
-            csv_button.evaluate("(node) => node.click()")
-    return download_info.value
-
-
-def _configure_checks_report(page, store_number, business_date):
-    _goto_report_page(page, CHECKS_URL)
-    date_text = _date_mmddyyyy(business_date)
-
-    try:
-        page.select_option("select[name*='period']", label="Today")
-    except Exception:
-        _select_visible_text(page, "Period :", "Today")
-
-    _clear_and_fill(
-        page,
-        "input:visible[id*='Start'], input:visible[name*='start'], input:visible[placeholder*='Start']",
-        date_text,
-    )
-    _clear_and_fill(
-        page,
-        "input:visible[id*='End'], input:visible[name*='end'], input:visible[placeholder*='End']",
-        date_text,
-    )
-
-    _select_store(page, store_number)
-    _select_visible_text(page, "Tender Type :", "Card")
-
-
-def _configure_orders_report(page, store_number, business_date):
-    _goto_report_page(page, ORDERS_URL)
-    date_text = _date_mmddyyyy(business_date)
-    _clear_and_fill(page, "#datepicker", date_text)
-    _select_store(page, store_number)
-    _select_visible_text(page, "Service :", "Eat In")
-
-
-def _configure_report(page, report_type, store_number, business_date):
-    if report_type == "checks":
-        _configure_checks_report(page, store_number, business_date)
-    else:
-        _configure_orders_report(page, store_number, business_date)
+    return saved
 
 
 def fetch_tray_report(
@@ -302,70 +91,16 @@ def fetch_tray_report(
     output_dir=None,
     env_file=DEFAULT_ENV_FILE,
 ):
-    if username is None or password is None:
-        username, password = load_tray_credentials(env_file)
-
+    del debug_visible
     report_type = report_type.lower().strip()
     if report_type not in {"checks", "orders"}:
         raise ValueError("report_type must be 'checks' or 'orders'")
-
-    output_dir = Path(output_dir or os.getcwd())
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    configure_vendored_browser_libs()
-    os.environ.setdefault("DEBUG", "pw:browser")
-    with sync_playwright() as p:
-        browser = launch_browser_with_install(p, headless=not debug_visible)
-        context = browser.new_context(accept_downloads=True)
-        page = context.new_page()
-
-        try:
-            page.goto("https://hq.dine.tray.com", wait_until="domcontentloaded", timeout=60000)
-            page.fill("input[type='email'], input[placeholder*='Email'], input#username", username)
-            page.fill("input[type='password'], input[placeholder*='Password']", password)
-            page.click(
-                "button[type='submit'], input[type='submit'], button:has-text('Log In'), button:has-text('Sign In'), button:has-text('Login')"
-            )
-            page.wait_for_selector("text=Logout", timeout=20000)
-
-            _configure_report(page, report_type, store_number, business_date)
-
-            download_timeout = 300000 if report_type == "orders" else 180000
-            date_part = business_date.strftime("%Y%m%d")
-            filename = f"tray_{report_type}_{store_number}_{date_part}.csv"
-            save_path = output_dir / filename
-            if report_type == "orders":
-                page.click("text='Run Report'")
-                page.wait_for_load_state("networkidle")
-                page.wait_for_timeout(2500)
-                _write_orders_csv_from_table(page, save_path, timeout=download_timeout)
-            else:
-                try:
-                    download = _run_report_and_download_csv(page, timeout=download_timeout)
-                except Exception:
-                    try:
-                        page.close()
-                    except Exception:
-                        pass
-                    page = context.new_page()
-                    _configure_report(page, report_type, store_number, business_date)
-                    download = _run_report_and_download_csv(page, timeout=download_timeout)
-                download.save_as(str(save_path))
-            return save_path
-        except Exception as exc:
-            error_img = output_dir / f"debug_{report_type}_{store_number}.png"
-            screenshot_note = ""
-            try:
-                page.screenshot(path=str(error_img), timeout=5000)
-                screenshot_note = f" Debug screenshot saved to {error_img}."
-            except Exception as screenshot_exc:
-                screenshot_note = f" Debug screenshot failed: {screenshot_exc}"
-            runtime_note = browser_runtime_diagnostics()
-            if runtime_note:
-                runtime_note = f" Runtime diagnostics: {runtime_note}"
-            raise RuntimeError(
-                f"Tray {report_type} fetch failed for store {store_number}: "
-                f"{exc}.{screenshot_note}{runtime_note}"
-            ) from exc
-        finally:
-            browser.close()
+    reports = fetch_tray_reports(
+        stores=[store_number],
+        business_date=business_date,
+        username=username,
+        password=password,
+        output_dir=output_dir,
+        env_file=env_file,
+    )
+    return reports[report_type][0]
