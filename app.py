@@ -2119,13 +2119,6 @@ if data_source == "FOH Database":
                     f"Data already exists for {pd.to_datetime(refresh_date).strftime('%b %-d, %Y')}. "
                     "Running refresh again will update/overwrite that day."
                 )
-            tray_ok, tray_missing_libs = tray_runtime_supported()
-            if not tray_ok:
-                st.warning(
-                    "Tray refresh is not available on this deployment host because required browser libraries are missing: "
-                    + ", ".join(tray_missing_libs)
-                    + ". Rosnet refresh can run here, but Tray refresh needs a different host or a local run for now."
-                )
             c1, c2, c3 = st.columns(3)
             if c1.button("Run Rosnet Import", use_container_width=True):
                 with st.spinner("Running Rosnet import..."):
@@ -2136,7 +2129,7 @@ if data_source == "FOH Database":
                     )
                 st.cache_data.clear()
                 st.rerun()
-            if c2.button("Run Tray Import", use_container_width=True, disabled=not tray_ok):
+            if c2.button("Run Tray Import", use_container_width=True):
                 with st.spinner("Running Tray import..."):
                     st.session_state["last_refresh_result"] = run_refresh_job(
                         "tray",
@@ -2145,7 +2138,7 @@ if data_source == "FOH Database":
                     )
                 st.cache_data.clear()
                 st.rerun()
-            if c3.button("Run Full Refresh", use_container_width=True, disabled=not tray_ok):
+            if c3.button("Run Full Refresh", use_container_width=True):
                 with st.spinner("Running Rosnet + Tray refresh..."):
                     st.session_state["last_refresh_result"] = run_full_refresh(
                         refresh_date,

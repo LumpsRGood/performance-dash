@@ -58,15 +58,25 @@ def ensure_linux_browser_libs():
 
 
 def launch_browser_with_install(playwright, headless):
-    ensure_linux_browser_libs()
     try:
         return playwright.chromium.launch(headless=headless)
     except PlaywrightError as exc:
         message = str(exc)
         if "Executable doesn't exist" not in message:
+            try:
+                ensure_linux_browser_libs()
+            except RuntimeError as libs_exc:
+                raise RuntimeError(f"{libs_exc} Original browser launch error: {message}") from exc
             raise
         ensure_playwright_chromium()
-        return playwright.chromium.launch(headless=headless)
+        try:
+            return playwright.chromium.launch(headless=headless)
+        except PlaywrightError as install_exc:
+            try:
+                ensure_linux_browser_libs()
+            except RuntimeError as libs_exc:
+                raise RuntimeError(f"{libs_exc} Original browser launch error: {install_exc}") from install_exc
+            raise
 
 
 def _date_mmddyyyy(business_date):
