@@ -62,18 +62,22 @@ def ensure_linux_browser_libs():
 
 def configure_vendored_browser_libs():
     if not VENDORED_BROWSER_LIB_DIR.exists():
-        return
+        return None
     vendor_path = str(VENDORED_BROWSER_LIB_DIR)
     current_path = os.environ.get("LD_LIBRARY_PATH", "")
     paths = [path for path in current_path.split(":") if path]
     if vendor_path not in paths:
         os.environ["LD_LIBRARY_PATH"] = ":".join([vendor_path] + paths)
+    return os.environ.get("LD_LIBRARY_PATH")
 
 
 def launch_browser_with_install(playwright, headless):
     configure_vendored_browser_libs()
     try:
-        return playwright.chromium.launch(headless=headless)
+        return playwright.chromium.launch(
+            headless=headless,
+            env={**os.environ, "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", "")},
+        )
     except PlaywrightError as exc:
         message = str(exc)
         if "Executable doesn't exist" not in message:
@@ -84,7 +88,10 @@ def launch_browser_with_install(playwright, headless):
             raise
         ensure_playwright_chromium()
         try:
-            return playwright.chromium.launch(headless=headless)
+            return playwright.chromium.launch(
+                headless=headless,
+                env={**os.environ, "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", "")},
+            )
         except PlaywrightError as install_exc:
             try:
                 ensure_linux_browser_libs()
@@ -299,6 +306,7 @@ def fetch_tray_report(
     output_dir = Path(output_dir or os.getcwd())
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    configure_vendored_browser_libs()
     with sync_playwright() as p:
         browser = launch_browser_with_install(p, headless=not debug_visible)
         context = browser.new_context(accept_downloads=True)
