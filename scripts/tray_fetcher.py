@@ -10,7 +10,9 @@ from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = ROOT.parent
 DEFAULT_ENV_FILE = ROOT / ".env"
+VENDORED_BROWSER_LIB_DIR = PROJECT_ROOT / "vendor" / "browser-libs"
 ORDERS_URL = "https://hq.dine.tray.com/tray/admin/reports?page=ordersListNew"
 CHECKS_URL = "https://hq.dine.tray.com/tray/admin/reports?page=closeTabs"
 
@@ -37,6 +39,7 @@ def ensure_playwright_chromium():
 
 
 def ensure_linux_browser_libs():
+    configure_vendored_browser_libs()
     required_libs = [
         "libglib-2.0.so.0",
         "libgobject-2.0.so.0",
@@ -57,7 +60,18 @@ def ensure_linux_browser_libs():
         )
 
 
+def configure_vendored_browser_libs():
+    if not VENDORED_BROWSER_LIB_DIR.exists():
+        return
+    vendor_path = str(VENDORED_BROWSER_LIB_DIR)
+    current_path = os.environ.get("LD_LIBRARY_PATH", "")
+    paths = [path for path in current_path.split(":") if path]
+    if vendor_path not in paths:
+        os.environ["LD_LIBRARY_PATH"] = ":".join([vendor_path] + paths)
+
+
 def launch_browser_with_install(playwright, headless):
+    configure_vendored_browser_libs()
     try:
         return playwright.chromium.launch(headless=headless)
     except PlaywrightError as exc:
