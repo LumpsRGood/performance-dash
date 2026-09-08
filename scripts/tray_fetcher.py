@@ -13,7 +13,12 @@ ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 DEFAULT_ENV_FILE = ROOT / ".env"
 VENDORED_BROWSER_LIB_DIR = PROJECT_ROOT / "vendor" / "browser-libs"
-BROWSER_LAUNCH_ARGS = ["--disable-gpu"]
+BROWSER_LAUNCH_ARGS = [
+    "--disable-gpu",
+    "--no-zygote",
+    "--single-process",
+    "--renderer-process-limit=1",
+]
 ORDERS_URL = "https://hq.dine.tray.com/tray/admin/reports?page=ordersListNew"
 CHECKS_URL = "https://hq.dine.tray.com/tray/admin/reports?page=closeTabs"
 
@@ -59,6 +64,23 @@ def raise_browser_launch_error(exc):
             "The deployment's vendored Chromium libraries need to be refreshed."
         ) from exc
     raise exc
+
+
+def browser_runtime_diagnostics():
+    diagnostics = []
+    for label, path in (
+        ("memory.current", Path("/sys/fs/cgroup/memory.current")),
+        ("memory.max", Path("/sys/fs/cgroup/memory.max")),
+        ("memory.events", Path("/sys/fs/cgroup/memory.events")),
+        ("memory.usage", Path("/sys/fs/cgroup/memory/memory.usage_in_bytes")),
+        ("memory.limit", Path("/sys/fs/cgroup/memory/memory.limit_in_bytes")),
+        ("memory.oom", Path("/sys/fs/cgroup/memory/memory.oom_control")),
+    ):
+        try:
+            diagnostics.append(f"{label}={path.read_text().strip()}")
+        except OSError:
+            continue
+    return "; ".join(diagnostics)
 
 
 def launch_browser_with_install(playwright, headless):
@@ -291,6 +313,7 @@ def fetch_tray_report(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     configure_vendored_browser_libs()
+    os.environ.setdefault("DEBUG", "pw:browser")
     with sync_playwright() as p:
         browser = launch_browser_with_install(p, headless=not debug_visible)
         context = browser.new_context(accept_downloads=True)
@@ -337,8 +360,12 @@ def fetch_tray_report(
                 screenshot_note = f" Debug screenshot saved to {error_img}."
             except Exception as screenshot_exc:
                 screenshot_note = f" Debug screenshot failed: {screenshot_exc}"
+            runtime_note = browser_runtime_diagnostics()
+            if runtime_note:
+                runtime_note = f" Runtime diagnostics: {runtime_note}"
             raise RuntimeError(
-                f"Tray {report_type} fetch failed for store {store_number}: {exc}.{screenshot_note}"
+                f"Tray {report_type} fetch failed for store {store_number}: "
+                f"{exc}.{screenshot_note}{runtime_note}"
             ) from exc
         finally:
             browser.close()
