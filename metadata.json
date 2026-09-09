@@ -1,0 +1,6 @@
+{
+  "name": "FOH Performance Dashboard",
+  "description": "Front-of-House (FOH) restaurant server performance dashboard tracking Tablet %, Turn Time, Dine In Bev %, and PPA across stores with WhatsApp card export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
