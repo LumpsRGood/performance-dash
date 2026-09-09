@@ -371,12 +371,13 @@ export function processStoreRows(
   const bottomPpaServer = getRank((r) => r.ppa, true);
 
   const storeNumber = rows[0]?.store || '3231';
+  const dbLabel = (rows.find((r: any) => r.storeLabel) as any)?.storeLabel;
 
   return {
     displayRows,
     kpis: {
       storeNumber,
-      storeLabel: getStoreLabel(storeNumber),
+      storeLabel: dbLabel || getStoreLabel(storeNumber),
       avgTablet,
       avgTurn,
       avgBev,

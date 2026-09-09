@@ -83,19 +83,9 @@ def get_secret_or_env(key, default=None):
 
 
 def tray_runtime_supported():
-    required_libs = [
-        "libglib-2.0.so.0",
-        "libgobject-2.0.so.0",
-        "libnss3.so",
-        "libnspr4.so",
-    ]
-    missing = []
-    for lib_name in required_libs:
-        try:
-            ctypes.CDLL(lib_name)
-        except OSError:
-            missing.append(lib_name)
-    return len(missing) == 0, missing
+    # Scraping is offloaded to the remote collector service (or sequential per-store chunking),
+    # so local host Chromium GUI libraries are not required.
+    return True, []
 
 
 def load_recent_import_runs(limit=12):

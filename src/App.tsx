@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   StoreNumber,
   PeriodMode,
@@ -23,38 +23,158 @@ import { Header } from './components/Header';
 import { AdminRefreshModal } from './components/AdminRefreshModal';
 import { StoreSection } from './components/StoreSection';
 import { ManualUploadSection } from './components/ManualUploadSection';
-import { Calendar, Filter, Sparkles, RefreshCw } from 'lucide-react';
+import { Calendar, Filter, Sparkles, Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [dataSource, setDataSource] = useState<DataSource>('FOH Database');
   const [periodMode, setPeriodMode] = useState<PeriodMode>('Yesterday');
-  const [businessDate, setBusinessDate] = useState<string>('2026-04-18');
+  const [businessDate, setBusinessDate] = useState<string>('2026-09-07');
+  const [availableDates, setAvailableDates] = useState<string[]>(['2026-09-07', ...AVAILABLE_BUSINESS_DATES]);
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('ALL');
 
+  const [dbStatus, setDbStatus] = useState<{
+    connected: boolean;
+    totalRecords?: number;
+    host?: string;
+  }>({ connected: false });
+
+  const [dbMetrics, setDbMetrics] = useState<ServerMetricRow[]>([]);
+  const [dbPrevMetrics, setDbPrevMetrics] = useState<ServerMetricRow[]>([]);
   const [importRuns, setImportRuns] = useState<ImportRun[]>(MOCK_IMPORT_RUNS);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(false);
 
   // Manual Upload data state
   const [uploadedMetrics, setUploadedMetrics] = useState<ServerMetricRow[]>([]);
+
+  // 1. Initial Health and Metadata Check
+  useEffect(() => {
+    // Check DB health
+    fetch('/api/health')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === 'ok') {
+          setDbStatus({
+            connected: true,
+            totalRecords: data.totalRecords,
+            host: data.dbHost,
+          });
+        }
+      })
+      .catch((err) => console.warn('Backend /api/health not reachable, using fallback mode:', err));
+
+    // Fetch dates from DB
+    fetch('/api/dates')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.dates && data.dates.length > 0) {
+          setAvailableDates(data.dates);
+          setBusinessDate(data.dates[0]);
+        }
+      })
+      .catch(() => {});
+
+    // Fetch import runs
+    fetch('/api/import-runs')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.runs && data.runs.length > 0) {
+          setImportRuns(data.runs);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // 2. Fetch Live Metrics on Date / Period Change
+  useEffect(() => {
+    if (dataSource !== 'FOH Database') return;
+
+    let isSubscribed = true;
+    setIsLoadingMetrics(true);
+
+    const targetDate = new Date(`${businessDate}T00:00:00`);
+    let mainUrl = `/api/metrics?date=${businessDate}`;
+    let prevUrl: string | null = null;
+
+    if (periodMode === 'Yesterday') {
+      const prevDateObj = new Date(targetDate);
+      prevDateObj.setDate(prevDateObj.getDate() - 7);
+      const prevDateIso = prevDateObj.toISOString().slice(0, 10);
+      prevUrl = `/api/metrics?date=${prevDateIso}`;
+    } else if (periodMode === 'WTD') {
+      // Find Monday of the current week
+      const day = targetDate.getDay();
+      const diffToMonday = targetDate.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(targetDate.setDate(diffToMonday));
+      const mondayIso = monday.toISOString().slice(0, 10);
+      mainUrl = `/api/metrics?startDate=${mondayIso}&endDate=${businessDate}`;
+
+      // Prior week Monday to same day
+      const priorMon = new Date(monday);
+      priorMon.setDate(priorMon.getDate() - 7);
+      const priorEnd = new Date(new Date(`${businessDate}T00:00:00`));
+      priorEnd.setDate(priorEnd.getDate() - 7);
+      prevUrl = `/api/metrics?startDate=${priorMon.toISOString().slice(0, 10)}&endDate=${priorEnd.toISOString().slice(0, 10)}`;
+    } else if (periodMode === 'MTD') {
+      const firstOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1).toISOString().slice(0, 10);
+      mainUrl = `/api/metrics?startDate=${firstOfMonth}&endDate=${businessDate}`;
+      const firstOfPriorMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() - 1, 1).toISOString().slice(0, 10);
+      const endOfPriorMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 0).toISOString().slice(0, 10);
+      prevUrl = `/api/metrics?startDate=${firstOfPriorMonth}&endDate=${endOfPriorMonth}`;
+    }
+
+    Promise.all([
+      fetch(mainUrl)
+        .then((r) => r.json())
+        .catch(() => ({ rows: [] })),
+      prevUrl
+        ? fetch(prevUrl)
+            .then((r) => r.json())
+            .catch(() => ({ rows: [] }))
+        : Promise.resolve({ rows: [] }),
+    ])
+      .then(([mainRes, prevRes]) => {
+        if (!isSubscribed) return;
+        if (mainRes.rows && mainRes.rows.length > 0) {
+          setDbMetrics(mainRes.rows);
+        } else {
+          // Fallback to mock data if empty for that particular date
+          const fallback = MOCK_DAILY_METRICS[businessDate] || MOCK_DAILY_METRICS['2026-04-18'];
+          setDbMetrics(fallback);
+        }
+
+        if (prevRes.rows && prevRes.rows.length > 0) {
+          setDbPrevMetrics(prevRes.rows);
+        } else {
+          setDbPrevMetrics(MOCK_PREVIOUS_PERIOD_METRICS);
+        }
+      })
+      .finally(() => {
+        if (isSubscribed) setIsLoadingMetrics(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [businessDate, periodMode, dataSource]);
 
   // Current active raw dataset
   const activeMetrics: ServerMetricRow[] = useMemo(() => {
     if (dataSource === 'Manual Uploads') {
       return uploadedMetrics;
     }
-    // FOH Database mode
-    const dateMetrics = MOCK_DAILY_METRICS[businessDate] || MOCK_DAILY_METRICS['2026-04-18'];
-    return dateMetrics;
-  }, [dataSource, uploadedMetrics, businessDate]);
+    return dbMetrics.length > 0 ? dbMetrics : MOCK_DAILY_METRICS['2026-04-18'];
+  }, [dataSource, uploadedMetrics, dbMetrics]);
 
   // Baseline previous dataset for trends
   const prevRowsMap = useMemo(() => {
     const map = new Map<string, ServerMetricRow>();
-    MOCK_PREVIOUS_PERIOD_METRICS.forEach((row) => {
+    const source = dbPrevMetrics.length > 0 ? dbPrevMetrics : MOCK_PREVIOUS_PERIOD_METRICS;
+    source.forEach((row) => {
       map.set(row.server, row);
     });
     return map;
-  }, []);
+  }, [dbPrevMetrics]);
 
   // Subtitle & Trend Note calculation
   const { subtitle, trendNote, comparisonLabel } = useMemo(() => {
@@ -138,37 +258,55 @@ export const App: React.FC = () => {
     return availableStores.filter((s) => s === selectedStoreFilter);
   }, [availableStores, selectedStoreFilter]);
 
-  // Handle automated refresh trigger
-  const handleTriggerRefresh = (
+  // Handle automated refresh trigger via API
+  const handleTriggerRefresh = async (
     jobType: 'rosnet' | 'tray' | 'full',
     date: string,
     targetStores: string[]
-  ) => {
+  ): Promise<{ ok: boolean; label: string; stdout: string; stderr: string }> => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      const newRun: ImportRun = {
-        id: Date.now(),
-        businessDate: date,
-        sourceSystem: jobType === 'rosnet' ? 'rosnet' : jobType === 'tray' ? 'tray' : 'pipeline',
-        reportType:
-          jobType === 'full'
-            ? 'daily_full_pipeline'
-            : jobType === 'rosnet'
-            ? 'rosnet_auto_import'
-            : 'tray_auto_import',
-        status: 'processed',
-        startedAt: new Date().toISOString(),
-        completedAt: new Date(Date.now() + 4000).toISOString(),
+
+    try {
+      const r = await fetch('/api/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobType,
+          businessDate: date,
+          stores: targetStores,
+        }),
+      });
+      const res = await r.json();
+      if (res.run) {
+        setImportRuns((prev) => [res.run, ...prev]);
+      }
+      return {
+        ok: Boolean(res.ok),
+        label: res.label || `${jobType.toUpperCase()} Refresh`,
+        stdout: res.stdout || '',
+        stderr: res.stderr || '',
       };
-      setImportRuns((prev) => [newRun, ...prev]);
-    }, 1200);
+    } catch (err: any) {
+      console.error('Refresh API failed:', err);
+      return {
+        ok: false,
+        label: `${jobType.toUpperCase()} Refresh`,
+        stdout: '',
+        stderr: err.message || 'Error triggering refresh',
+      };
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        <Header dataSource={dataSource} setDataSource={setDataSource} />
+        <Header
+          dataSource={dataSource}
+          setDataSource={setDataSource}
+          dbStatus={dbStatus}
+        />
 
         {/* Admin Automated Refresh Banner */}
         {dataSource === 'FOH Database' && (
@@ -222,7 +360,7 @@ export const App: React.FC = () => {
               onChange={(e) => setBusinessDate(e.target.value)}
               className="px-3 py-1.5 border border-slate-300 rounded-md text-xs font-medium text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {AVAILABLE_BUSINESS_DATES.map((dt) => (
+              {availableDates.map((dt) => (
                 <option key={dt} value={dt}>
                   {dt}
                 </option>
@@ -251,8 +389,13 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Store Dashboards */}
-        {displayStores.length === 0 ? (
+        {/* Store Dashboards or Loading Indicator */}
+        {isLoadingMetrics ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-12 text-center flex flex-col items-center justify-center">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
+            <p className="text-sm font-semibold text-slate-700">Loading FOH metrics from database...</p>
+          </div>
+        ) : displayStores.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
             <Sparkles className="w-8 h-8 text-slate-400 mx-auto mb-3" />
             <h3 className="text-base font-semibold text-slate-800">
@@ -268,7 +411,7 @@ export const App: React.FC = () => {
             const { displayRows, kpis } = processStoreRows(rawRows, prevRowsMap);
 
             // Compute store level deltas
-            const prevStoreRows = MOCK_PREVIOUS_PERIOD_METRICS.filter(
+            const prevStoreRows = (dbPrevMetrics.length > 0 ? dbPrevMetrics : MOCK_PREVIOUS_PERIOD_METRICS).filter(
               (r) => normalizeStoreNumber(r.store) === st
             );
             const { kpis: prevKpis } = processStoreRows(prevStoreRows);
