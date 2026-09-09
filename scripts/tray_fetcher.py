@@ -21,6 +21,14 @@ def load_tray_credentials(env_file=DEFAULT_ENV_FILE):
     return username, password
 
 
+def _wake_collector(collector_url):
+    """Pings the collector service to wake it if Render has hibernated the container."""
+    try:
+        requests.get(f"{collector_url}/health", timeout=10)
+    except Exception:
+        pass
+
+
 def _fetch_single_store(
     store,
     business_date,
@@ -28,9 +36,9 @@ def _fetch_single_store(
     password,
     output_dir,
     collector_url,
-    max_retries=2,
+    max_retries=3,
 ):
-    """Fetch reports for a single store, retrying on transient 503/timeout errors."""
+    """Fetch reports for a single store, retrying on transient 502/503/504 wake/timeout errors."""
     last_error = None
     for attempt in range(1, max_retries + 1):
         try:
@@ -48,7 +56,9 @@ def _fetch_single_store(
         except requests.RequestException as exc:
             last_error = RuntimeError(f"Could not reach Tray collector for store {store}: {exc}")
             if attempt < max_retries:
-                time.sleep(3)
+                backoff = attempt * 5
+                print(f"     Network blip on store {store}, retrying in {backoff}s...")
+                time.sleep(backoff)
                 continue
             raise last_error from exc
 
@@ -60,10 +70,11 @@ def _fetch_single_store(
             last_error = RuntimeError(
                 f"Tray report service failed for store {store} ({response.status_code}): {detail}"
             )
-            # If 503 or 504, wait briefly and retry
-            if response.status_code in {502, 503, 504} and attempt < max_retries:
-                print(f"     Transient {response.status_code} on store {store}, backing off 5s before retry...")
-                time.sleep(5)
+            # If 500, 502, 503 or 504 (e.g. Render waking from hibernation), back off and retry
+            if response.status_code in {500, 502, 503, 504} and attempt < max_retries:
+                backoff = attempt * 7
+                print(f"     Transient {response.status_code} (cold wake/proxy delay) on store {store}, backing off {backoff}s before retry...")
+                time.sleep(backoff)
                 continue
             raise last_error
 
@@ -113,6 +124,9 @@ def fetch_tray_reports(
     output_dir = Path(output_dir or os.getcwd())
     output_dir.mkdir(parents=True, exist_ok=True)
     collector_url = os.getenv("TRAY_COLLECTOR_URL", DEFAULT_COLLECTOR_URL).rstrip("/")
+
+    # Warm up collector if sleeping on Render
+    _wake_collector(collector_url)
 
     aggregated = {"orders": [], "checks": []}
 
